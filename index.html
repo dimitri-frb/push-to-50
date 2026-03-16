@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Push to 50</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/babel-standalone@6.26.0/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #0f172a; color: #f1f5f9; min-height: 100vh; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+
+    .kpi-card { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 16px; padding: 20px 24px; border: 1px solid #334155; transition: transform 0.2s, box-shadow 0.2s; }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    .workout-card { background: #1e293b; border-radius: 16px; padding: 24px; border: 1px solid #334155; transition: all 0.2s; cursor: pointer; }
+    .workout-card:hover { border-color: #60a5fa; box-shadow: 0 0 20px rgba(96,165,250,0.1); }
+    .cal-day { width: 100%; aspect-ratio: 1; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; position: relative; }
+    .cal-day:hover { transform: scale(1.05); }
+    .cal-day.today { box-shadow: 0 0 0 2px #60a5fa; }
+    .cal-day.completed { background: #065f46; border: 1px solid #10b981; }
+    .cal-day.partial { background: #78350f; border: 1px solid #f59e0b; }
+    .cal-day.missed { background: #7f1d1d; border: 1px solid #ef4444; }
+    .cal-day.rest { background: #1e293b; border: 1px solid #334155; color: #64748b; }
+    .cal-day.future { background: #1e293b; border: 1px solid #334155; }
+    .cal-day.workout-day.future { background: #1e293b; border: 1px solid #475569; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .modal { background: #1e293b; border-radius: 20px; padding: 32px; border: 1px solid #475569; max-width: 480px; width: 90%; max-height: 90vh; overflow-y: auto; }
+
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge-mon { background: #1e40af; color: #93c5fd; }
+    .badge-wed { background: #7e22ce; color: #c4b5fd; }
+    .badge-fri { background: #b91c1c; color: #fca5a5; }
+
+    .input-field { background: #0f172a; border: 1px solid #475569; border-radius: 10px; padding: 10px 14px; color: #f1f5f9; font-size: 16px; width: 100%; outline: none; transition: border-color 0.2s; }
+    .input-field:focus { border-color: #60a5fa; }
+
+    .btn { padding: 10px 24px; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; border: none; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #475569; }
+    .btn-ghost:hover { background: #334155; color: #f1f5f9; }
+
+    .progress-ring { transform: rotate(-90deg); }
+    .week-summary { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 16px; border: 1px solid #334155; }
+
+    @media (max-width: 768px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      .challenges-grid { grid-template-columns: 1fr !important; }
+      .cal-day { font-size: 12px !important; border-radius: 8px !important; }
+      .modal { padding: 24px; }
+    }
+    @media (max-width: 480px) {
+      .kpi-grid { grid-template-columns: 1fr !important; }
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+// ── Constants ──
+const CHALLENGE_START = new Date(2026, 2, 16); // March 16, 2026
+const CHALLENGE_END = new Date(2026, 7, 15);   // August 15, 2026
+const PLAYERS = ["Dimitri", "Bram"];
+
+const WORKOUT_TYPES = {
+  1: { // Monday
+    name: "The Ladder",
+    emoji: "\u{1F4AA}",
+    color: "#3b82f6",
+    badgeClass: "badge-mon",
+    description: "Alternating ladder series + finisher",
+    exercises: [
+      { id: "ladder", name: "Ladder (alternating until break)", type: "ladder", description: "Series of 5, 6, 7, 8, 9... First one then the other until you break" },
+      { id: "clean", name: "Clean Push-ups", type: "sets", sets: 3, targetReps: 10, description: "3x10 clean push-ups" },
+      { id: "plank", name: "Plank", type: "time", targetSeconds: 60, description: "60 second plank hold" }
+    ]
+  },
+  3: { // Wednesday
+    name: "The Power",
+    emoji: "\u{26A1}",
+    color: "#8b5cf6",
+    badgeClass: "badge-wed",
+    description: "Strength-focused push-up variations",
+    exercises: [
+      { id: "diamond", name: "Diamond Push-ups", type: "sets", sets: 3, targetReps: 8, description: "3x8 diamond push-ups" },
+      { id: "slowmo", name: "Slow-Mo Push-ups", type: "sets", sets: 3, targetReps: 10, description: "3x10 slow-mo push-ups" },
+      { id: "plank", name: "Plank", type: "time", targetSeconds: 60, description: "60 second plank hold" }
+    ]
+  },
+  5: { // Friday
+    name: "The Burnout",
+    emoji: "\u{1F525}",
+    color: "#ef4444",
+    badgeClass: "badge-fri",
+    description: "Max reps + high-volume burnout",
+    exercises: [
+      { id: "maxreps", name: "Set 1: Max Reps", type: "single", description: "Max reps without stopping" },
+      { id: "burnout", name: "Sets 2-5: 60% of max", type: "burnout", sets: 4, description: "90s rest between sets. Each set = 60% of Set 1 max" },
+      { id: "plank", name: "Plank", type: "time", targetSeconds: 60, description: "60 second plank hold" }
+    ]
+  }
+};
+
+// ── Helpers ──
+function getDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+
+function parseDate(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function isWorkoutDay(date) {
+  const dow = date.getDay();
+  return dow === 1 || dow === 3 || dow === 5;
+}
+
+function getWorkoutType(date) {
+  return WORKOUT_TYPES[date.getDay()] || null;
+}
+
+function isInChallenge(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return d >= CHALLENGE_START && d <= CHALLENGE_END;
+}
+
+function getDaysLeft() {
+  const today = new Date();
+  const end = CHALLENGE_END;
+  const diff = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+  return Math.max(0, diff);
+}
+
+function getDaysSinceStart() {
+  const today = new Date();
+  const diff = Math.ceil((today - CHALLENGE_START) / (1000 * 60 * 60 * 24));
+  return Math.max(1, diff);
+}
+
+function getWeekNumber(date) {
+  const diff = Math.floor((date - CHALLENGE_START) / (1000 * 60 * 60 * 24));
+  return Math.floor(diff / 7) + 1;
+}
+
+function isToday(date) {
+  const t = new Date();
+  return date.getDate() === t.getDate() && date.getMonth() === t.getMonth() && date.getFullYear() === t.getFullYear();
+}
+
+function isPast(date) {
+  const t = new Date();
+  t.setHours(0,0,0,0);
+  const d = new Date(date);
+  d.setHours(0,0,0,0);
+  return d < t;
+}
+
+// ── Data persistence ──
+function loadData() {
+  try {
+    const raw = localStorage.getItem('pushto50_data');
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveData(data) {
+  localStorage.setItem('pushto50_data', JSON.stringify(data));
+}
+
+function getTotalPushups(data, player) {
+  let total = 0;
+  Object.values(data).forEach(dayData => {
+    const pd = dayData[player];
+    if (!pd) return;
+    total += countPushups(pd);
+  });
+  return total;
+}
+
+function countPushups(pd) {
+  let total = 0;
+  if (pd.ladder) total += pd.ladder.reduce((s, v) => s + (v || 0), 0);
+  if (pd.clean) total += pd.clean.reduce((s, v) => s + (v || 0), 0);
+  if (pd.diamond) total += pd.diamond.reduce((s, v) => s + (v || 0), 0);
+  if (pd.slowmo) total += pd.slowmo.reduce((s, v) => s + (v || 0), 0);
+  if (pd.maxreps) total += (pd.maxreps || 0);
+  if (pd.burnout) total += pd.burnout.reduce((s, v) => s + (v || 0), 0);
+  return total;
+}
+
+function getMaxUnbroken(data, player) {
+  let max = 0;
+  Object.values(data).forEach(dayData => {
+    const pd = dayData[player];
+    if (!pd) return;
+    if (pd.ladder) pd.ladder.forEach(v => { if (v > max) max = v; });
+    if (pd.maxreps && pd.maxreps > max) max = pd.maxreps;
+  });
+  return max;
+}
+
+function getDayStatus(data, dateKey, workout) {
+  const dayData = data[dateKey];
+  if (!dayData) return null;
+
+  let statuses = [];
+  PLAYERS.forEach(p => {
+    const pd = dayData[p];
+    if (!pd) { statuses.push('none'); return; }
+    const completion = getCompletionLevel(pd, workout);
+    statuses.push(completion >= 1 ? 'completed' : completion > 0 ? 'partial' : 'none');
+  });
+
+  // Return worst status
+  if (statuses.every(s => s === 'completed')) return 'completed';
+  if (statuses.some(s => s !== 'none')) return 'partial';
+  return null;
+}
+
+function getCompletionLevel(pd, workout) {
+  if (!workout) return 0;
+  let completed = 0;
+  let total = 0;
+  workout.exercises.forEach(ex => {
+    total++;
+    if (ex.type === 'ladder') {
+      if (pd.ladder && pd.ladder.length > 0 && pd.ladder.some(v => v > 0)) completed++;
+    } else if (ex.type === 'sets') {
+      const vals = pd[ex.id];
+      if (vals && vals.length === ex.sets && vals.every(v => v >= ex.targetReps)) completed++;
+      else if (vals && vals.some(v => v > 0)) completed += 0.5;
+    } else if (ex.type === 'single') {
+      if (pd.maxreps && pd.maxreps > 0) completed++;
+    } else if (ex.type === 'burnout') {
+      if (pd.burnout && pd.burnout.length > 0 && pd.burnout.some(v => v > 0)) completed++;
+    } else if (ex.type === 'time') {
+      if (pd.plank && pd.plank >= ex.targetSeconds) completed++;
+      else if (pd.plank && pd.plank > 0) completed += 0.5;
+    }
+  });
+  return total > 0 ? completed / total : 0;
+}
+
+// ── Components ──
+
+function ProgressRing({ value, max, size = 80, strokeWidth = 6, color = "#3b82f6" }) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const pct = Math.min(value / max, 1);
+  const offset = circumference - pct * circumference;
+  return React.createElement("svg", { width: size, height: size, className: "progress-ring" },
+    React.createElement("circle", { cx: size/2, cy: size/2, r: radius, fill: "none", stroke: "#334155", strokeWidth }),
+    React.createElement("circle", { cx: size/2, cy: size/2, r: radius, fill: "none", stroke: color, strokeWidth, strokeDasharray: circumference, strokeDashoffset: offset, strokeLinecap: "round", style: { transition: "stroke-dashoffset 0.5s ease" } })
+  );
+}
+
+function KPICard({ label, values, icon, color, subLabel }) {
+  return React.createElement("div", { className: "kpi-card" },
+    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12 } },
+      React.createElement("span", { style: { fontSize: 24 } }, icon),
+      React.createElement("span", { style: { fontSize: 13, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 } }, label)
+    ),
+    React.createElement("div", { style: { display: "flex", gap: 24 } },
+      values.map((v, i) => React.createElement("div", { key: i },
+        React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: color || "#f1f5f9" } }, v.value),
+        React.createElement("div", { style: { fontSize: 12, color: "#64748b", marginTop: 2 } }, v.label)
+      ))
+    ),
+    subLabel && React.createElement("div", { style: { fontSize: 12, color: "#64748b", marginTop: 8 } }, subLabel)
+  );
+}
+
+function WorkoutModal({ date, workout, data, onSave, onClose }) {
+  const dateKey = getDateKey(date);
+  const existing = data[dateKey] || {};
+  const [activePlayer, setActivePlayer] = useState(PLAYERS[0]);
+
+  const initPlayerData = (player) => {
+    const pd = existing[player] || {};
+    return {
+      ladder: pd.ladder || [],
+      clean: pd.clean || Array(3).fill(''),
+      diamond: pd.diamond || Array(3).fill(''),
+      slowmo: pd.slowmo || Array(3).fill(''),
+      maxreps: pd.maxreps || '',
+      burnout: pd.burnout || Array(4).fill(''),
+      plank: pd.plank || ''
+    };
+  };
+
+  const [playerData, setPlayerData] = useState(() => {
+    const init = {};
+    PLAYERS.forEach(p => { init[p] = initPlayerData(p); });
+    return init;
+  });
+
+  const updateField = (player, field, value) => {
+    setPlayerData(prev => ({
+      ...prev,
+      [player]: { ...prev[player], [field]: value }
+    }));
+  };
+
+  const updateArrayField = (player, field, index, value) => {
+    setPlayerData(prev => {
+      const arr = [...(prev[player][field] || [])];
+      arr[index] = value === '' ? '' : parseInt(value) || 0;
+      return { ...prev, [player]: { ...prev[player], [field]: arr } };
+    });
+  };
+
+  const addLadderRep = (player) => {
+    setPlayerData(prev => {
+      const ladder = [...prev[player].ladder, ''];
+      return { ...prev, [player]: { ...prev[player], ladder } };
+    });
+  };
+
+  const removeLadderRep = (player) => {
+    setPlayerData(prev => {
+      const ladder = prev[player].ladder.slice(0, -1);
+      return { ...prev, [player]: { ...prev[player], ladder } };
+    });
+  };
+
+  const handleSave = () => {
+    const cleaned = {};
+    PLAYERS.forEach(p => {
+      const pd = playerData[p];
+      cleaned[p] = {
+        ladder: pd.ladder.map(v => parseInt(v) || 0),
+        clean: pd.clean.map(v => parseInt(v) || 0),
+        diamond: pd.diamond.map(v => parseInt(v) || 0),
+        slowmo: pd.slowmo.map(v => parseInt(v) || 0),
+        maxreps: parseInt(pd.maxreps) || 0,
+        burnout: pd.burnout.map(v => parseInt(v) || 0),
+        plank: parseInt(pd.plank) || 0
+      };
+    });
+    onSave(dateKey, cleaned);
+  };
+
+  const handleClear = () => {
+    onSave(dateKey, null);
+  };
+
+  const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
+  const dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const pd = playerData[activePlayer];
+
+  const renderExercise = (ex) => {
+    if (ex.type === 'ladder') {
+      const reps = pd.ladder;
+      return React.createElement("div", { key: ex.id, style: { marginBottom: 20 } },
+        React.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
+        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
+        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 } },
+          reps.map((v, i) => React.createElement("div", { key: i, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2 } },
+            React.createElement("span", { style: { fontSize: 11, color: "#64748b" } }, `#${i + 1}`),
+            React.createElement("input", {
+              className: "input-field",
+              type: "number",
+              value: v,
+              onChange: (e) => updateArrayField(activePlayer, 'ladder', i, e.target.value),
+              style: { width: 56, textAlign: "center", padding: "8px 4px" },
+              placeholder: "0"
+            })
+          ))
+        ),
+        React.createElement("div", { style: { display: "flex", gap: 8 } },
+          React.createElement("button", { className: "btn btn-ghost", onClick: () => addLadderRep(activePlayer), style: { fontSize: 12, padding: "6px 12px" } }, "+ Add set"),
+          reps.length > 0 && React.createElement("button", { className: "btn btn-ghost", onClick: () => removeLadderRep(activePlayer), style: { fontSize: 12, padding: "6px 12px" } }, "- Remove")
+        )
+      );
+    }
+
+    if (ex.type === 'sets') {
+      const vals = pd[ex.id] || [];
+      return React.createElement("div", { key: ex.id, style: { marginBottom: 20 } },
+        React.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
+        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
+        React.createElement("div", { style: { display: "flex", gap: 8 } },
+          Array.from({ length: ex.sets }).map((_, i) => React.createElement("div", { key: i, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2 } },
+            React.createElement("span", { style: { fontSize: 11, color: "#64748b" } }, `Set ${i + 1}`),
+            React.createElement("input", {
+              className: "input-field",
+              type: "number",
+              value: vals[i] || '',
+              onChange: (e) => updateArrayField(activePlayer, ex.id, i, e.target.value),
+              style: { width: 64, textAlign: "center" },
+              placeholder: String(ex.targetReps)
+            })
+          ))
+        )
+      );
+    }
+
+    if (ex.type === 'single') {
+      return React.createElement("div", { key: ex.id, style: { marginBottom: 20 } },
+        React.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
+        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
+        React.createElement("input", {
+          className: "input-field",
+          type: "number",
+          value: pd.maxreps,
+          onChange: (e) => updateField(activePlayer, 'maxreps', e.target.value),
+          style: { width: 100 },
+          placeholder: "Max"
+        })
+      );
+    }
+
+    if (ex.type === 'burnout') {
+      const vals = pd.burnout || [];
+      const maxRep = parseInt(pd.maxreps) || 0;
+      const target = Math.round(maxRep * 0.6);
+      return React.createElement("div", { key: ex.id, style: { marginBottom: 20 } },
+        React.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
+        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description, target > 0 ? ` (Target: ${target} reps each)` : ''),
+        React.createElement("div", { style: { display: "flex", gap: 8 } },
+          Array.from({ length: ex.sets }).map((_, i) => React.createElement("div", { key: i, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2 } },
+            React.createElement("span", { style: { fontSize: 11, color: "#64748b" } }, `Set ${i + 2}`),
+            React.createElement("input", {
+              className: "input-field",
+              type: "number",
+              value: vals[i] || '',
+              onChange: (e) => updateArrayField(activePlayer, 'burnout', i, e.target.value),
+              style: { width: 64, textAlign: "center" },
+              placeholder: target > 0 ? String(target) : "0"
+            })
+          ))
+        )
+      );
+    }
+
+    if (ex.type === 'time') {
+      return React.createElement("div", { key: ex.id, style: { marginBottom: 20 } },
+        React.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
+        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+          React.createElement("input", {
+            className: "input-field",
+            type: "number",
+            value: pd.plank,
+            onChange: (e) => updateField(activePlayer, 'plank', e.target.value),
+            style: { width: 80, textAlign: "center" },
+            placeholder: String(ex.targetSeconds)
+          }),
+          React.createElement("span", { style: { color: "#94a3b8", fontSize: 14 } }, "seconds")
+        )
+      );
+    }
+    return null;
+  };
+
+  return React.createElement("div", { className: "modal-overlay", onClick: (e) => { if (e.target === e.currentTarget) onClose(); } },
+    React.createElement("div", { className: "modal" },
+      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 } },
+        React.createElement("div", null,
+          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 4 } },
+            React.createElement("span", { style: { fontSize: 28 } }, workout.emoji),
+            React.createElement("h2", { style: { fontSize: 22, fontWeight: 800 } }, workout.name)
+          ),
+          React.createElement("div", { style: { color: "#94a3b8", fontSize: 14 } }, `${dayOfWeek}, ${dateStr}`)
+        ),
+        React.createElement("button", { onClick: onClose, style: { background: "none", border: "none", color: "#94a3b8", fontSize: 24, cursor: "pointer", padding: 4 } }, "\u00D7")
+      ),
+
+      // Player tabs
+      React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 24 } },
+        PLAYERS.map(p => React.createElement("button", {
+          key: p,
+          className: "btn",
+          onClick: () => setActivePlayer(p),
+          style: {
+            flex: 1,
+            background: activePlayer === p ? workout.color : "transparent",
+            color: activePlayer === p ? "white" : "#94a3b8",
+            border: activePlayer === p ? "none" : "1px solid #475569"
+          }
+        }, p))
+      ),
+
+      // Exercises
+      workout.exercises.map(ex => renderExercise(ex)),
+
+      // Actions
+      React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 24 } },
+        React.createElement("button", { className: "btn btn-primary", onClick: handleSave, style: { flex: 1, background: workout.color } }, "Save"),
+        React.createElement("button", { className: "btn btn-danger", onClick: handleClear, style: { flex: 0 } }, "Clear"),
+        React.createElement("button", { className: "btn btn-ghost", onClick: onClose }, "Cancel")
+      )
+    )
+  );
+}
+
+function Calendar({ month, year, data, onDayClick }) {
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const today = new Date();
+
+  // Build weeks for summary
+  const weeks = {};
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    if (!isInChallenge(date)) continue;
+    const wn = getWeekNumber(date);
+    if (!weeks[wn]) weeks[wn] = { pushups: 0, maxReps: 0, days: 0 };
+    const dk = getDateKey(date);
+    if (data[dk]) {
+      PLAYERS.forEach(p => {
+        const pd = data[dk][p];
+        if (pd) {
+          weeks[wn].pushups += countPushups(pd);
+          const mr = getMaxUnbroken(({ [dk]: data[dk] }), p);
+          if (mr > weeks[wn].maxReps) weeks[wn].maxReps = mr;
+        }
+      });
+      weeks[wn].days++;
+    }
+  }
+
+  const cells = [];
+  // Empty cells for offset
+  for (let i = 0; i < firstDay; i++) {
+    cells.push(React.createElement("div", { key: `empty-${i}` }));
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const dateKey = getDateKey(date);
+    const isWorkout = isWorkoutDay(date) && isInChallenge(date);
+    const isTodayDate = isToday(date);
+    const isPastDate = isPast(date);
+    const workout = getWorkoutType(date);
+    const status = isWorkout ? getDayStatus(data, dateKey, workout) : null;
+    const inChallenge = isInChallenge(date);
+
+    let className = "cal-day";
+    if (isTodayDate) className += " today";
+    if (!inChallenge) {
+      className += " rest";
+    } else if (isWorkout) {
+      if (status === 'completed') className += " completed";
+      else if (status === 'partial') className += " partial";
+      else if (isPastDate) className += " missed";
+      else className += " workout-day future";
+    } else {
+      className += " rest";
+    }
+
+    const dotColor = workout ? workout.color : null;
+
+    cells.push(React.createElement("div", {
+      key: d,
+      className,
+      onClick: () => isWorkout && inChallenge && onDayClick(date),
+      style: { cursor: isWorkout && inChallenge ? 'pointer' : 'default' }
+    },
+      React.createElement("span", null, d),
+      isWorkout && inChallenge && React.createElement("div", {
+        style: { width: 6, height: 6, borderRadius: "50%", background: dotColor, marginTop: 2, opacity: 0.8 }
+      }),
+      status === 'completed' && React.createElement("span", { style: { position: "absolute", top: 2, right: 4, fontSize: 10 } }, "\u2713")
+    ));
+  }
+
+  const monthName = new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  return React.createElement("div", null,
+    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 8 } },
+      dayNames.map(dn => React.createElement("div", { key: dn, style: { textAlign: "center", fontSize: 12, color: "#64748b", fontWeight: 600, padding: "4px 0" } }, dn))
+    ),
+    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 } }, cells),
+
+    // Weekly summaries
+    Object.keys(weeks).length > 0 && React.createElement("div", { style: { marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8 } },
+      Object.entries(weeks).map(([wn, ws]) =>
+        React.createElement("div", { key: wn, className: "week-summary", style: { flex: "1 1 140px", minWidth: 140 } },
+          React.createElement("div", { style: { fontSize: 12, color: "#64748b", fontWeight: 600, marginBottom: 4 } }, `Week ${wn}`),
+          React.createElement("div", { style: { fontSize: 14, fontWeight: 700 } }, `${ws.pushups} push-ups`),
+          React.createElement("div", { style: { fontSize: 12, color: "#94a3b8" } }, `Max: ${ws.maxReps} | ${ws.days} sessions`)
+        )
+      )
+    )
+  );
+}
+
+function UpcomingChallenges({ data }) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcoming = [];
+  const d = new Date(today);
+
+  while (upcoming.length < 3 && d <= CHALLENGE_END) {
+    if (isWorkoutDay(d) && isInChallenge(d)) {
+      const dateKey = getDateKey(d);
+      const workout = getWorkoutType(d);
+      const status = getDayStatus(data, dateKey, workout);
+      if (d >= today && status !== 'completed') {
+        upcoming.push({ date: new Date(d), workout, dateKey, status });
+      }
+    }
+    d.setDate(d.getDate() + 1);
+  }
+
+  return React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }, className: "challenges-grid" },
+    upcoming.map(({ date, workout, dateKey, status }) => {
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const isTodayDate = isToday(date);
+
+      return React.createElement("div", {
+        key: dateKey,
+        className: "workout-card",
+        style: { borderColor: isTodayDate ? workout.color : "#334155" }
+      },
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 } },
+          React.createElement("div", null,
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 } },
+              React.createElement("span", { style: { fontSize: 24 } }, workout.emoji),
+              React.createElement("span", { style: { fontWeight: 800, fontSize: 18 } }, workout.name)
+            ),
+            React.createElement("div", { style: { color: "#94a3b8", fontSize: 13 } }, `${dayName}, ${dateStr}`)
+          ),
+          React.createElement("span", { className: `badge ${workout.badgeClass}` },
+            isTodayDate ? "TODAY" : dayName.substring(0, 3).toUpperCase()
+          )
+        ),
+        React.createElement("div", { style: { fontSize: 13, color: "#94a3b8", marginBottom: 12 } }, workout.description),
+        React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+          workout.exercises.map(ex => React.createElement("div", {
+            key: ex.id,
+            style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#cbd5e1" }
+          },
+            React.createElement("div", { style: { width: 6, height: 6, borderRadius: "50%", background: workout.color, flexShrink: 0 } }),
+            ex.description
+          ))
+        )
+      );
+    })
+  );
+}
+
+// ── Main App ──
+function App() {
+  const [data, setData] = useState(loadData);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [calMonth, setCalMonth] = useState(new Date().getMonth());
+  const [calYear, setCalYear] = useState(new Date().getFullYear());
+  const [activePlayer, setActivePlayer] = useState(null); // for KPI highlight
+
+  useEffect(() => { saveData(data); }, [data]);
+
+  const handleSave = (dateKey, dayData) => {
+    setData(prev => {
+      const next = { ...prev };
+      if (dayData === null) { delete next[dateKey]; }
+      else { next[dateKey] = dayData; }
+      return next;
+    });
+    setSelectedDate(null);
+  };
+
+  const totalDimitri = getTotalPushups(data, "Dimitri");
+  const totalBram = getTotalPushups(data, "Bram");
+  const maxDimitri = getMaxUnbroken(data, "Dimitri");
+  const maxBram = getMaxUnbroken(data, "Bram");
+  const daysLeft = getDaysLeft();
+  const daysSinceStart = getDaysSinceStart();
+  const avgDimitri = daysSinceStart > 0 ? (totalDimitri / daysSinceStart).toFixed(1) : 0;
+  const avgBram = daysSinceStart > 0 ? (totalBram / daysSinceStart).toFixed(1) : 0;
+
+  const prevMonth = () => {
+    if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); }
+    else setCalMonth(calMonth - 1);
+  };
+  const nextMonth = () => {
+    if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); }
+    else setCalMonth(calMonth + 1);
+  };
+
+  const monthLabel = new Date(calYear, calMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const selectedWorkout = selectedDate ? getWorkoutType(selectedDate) : null;
+
+  // Progress toward 50
+  const progressPct = Math.round((Math.max(maxDimitri, maxBram) / 50) * 100);
+
+  return React.createElement("div", { style: { maxWidth: 960, margin: "0 auto", padding: "24px 16px" } },
+
+    // Header
+    React.createElement("div", { style: { textAlign: "center", marginBottom: 40 } },
+      React.createElement("h1", { style: { fontSize: 48, fontWeight: 900, letterSpacing: -2, marginBottom: 4, background: "linear-gradient(135deg, #3b82f6, #8b5cf6, #ef4444)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } }, "PUSH TO 50"),
+      React.createElement("p", { style: { color: "#64748b", fontSize: 16, fontWeight: 500 } }, "Dimitri & Bram \u2022 50 unbroken push-ups by August 15th"),
+      React.createElement("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginTop: 16 } },
+        React.createElement(ProgressRing, { value: Math.max(maxDimitri, maxBram), max: 50, size: 64, strokeWidth: 5, color: "#8b5cf6" }),
+        React.createElement("div", { style: { textAlign: "left" } },
+          React.createElement("div", { style: { fontSize: 24, fontWeight: 800 } }, `${Math.max(maxDimitri, maxBram)} / 50`),
+          React.createElement("div", { style: { fontSize: 13, color: "#64748b" } }, "best unbroken reps")
+        )
+      )
+    ),
+
+    // KPI Grid
+    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 40 }, className: "kpi-grid" },
+      React.createElement(KPICard, {
+        label: "Total Push-ups",
+        icon: "\u{1F4AA}",
+        color: "#3b82f6",
+        values: [
+          { value: totalDimitri.toLocaleString(), label: "Dimitri" },
+          { value: totalBram.toLocaleString(), label: "Bram" }
+        ]
+      }),
+      React.createElement(KPICard, {
+        label: "Max Unbroken",
+        icon: "\u{1F3AF}",
+        color: "#10b981",
+        values: [
+          { value: maxDimitri, label: "Dimitri" },
+          { value: maxBram, label: "Bram" }
+        ]
+      }),
+      React.createElement(KPICard, {
+        label: "Days Left",
+        icon: "\u23F3",
+        color: "#f59e0b",
+        values: [{ value: daysLeft, label: "until Aug 15" }]
+      }),
+      React.createElement(KPICard, {
+        label: "Avg / Day",
+        icon: "\u{1F4C8}",
+        color: "#8b5cf6",
+        values: [
+          { value: avgDimitri, label: "Dimitri" },
+          { value: avgBram, label: "Bram" }
+        ]
+      })
+    ),
+
+    // Calendar Section
+    React.createElement("div", { style: { marginBottom: 40 } },
+      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } },
+        React.createElement("h2", { style: { fontSize: 22, fontWeight: 800 } }, "Calendar"),
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+          React.createElement("button", { className: "btn btn-ghost", onClick: prevMonth, style: { padding: "6px 12px" } }, "\u2190"),
+          React.createElement("span", { style: { fontWeight: 700, fontSize: 16, minWidth: 160, textAlign: "center" } }, monthLabel),
+          React.createElement("button", { className: "btn btn-ghost", onClick: nextMonth, style: { padding: "6px 12px" } }, "\u2192")
+        )
+      ),
+
+      // Legend
+      React.createElement("div", { style: { display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap" } },
+        [
+          { color: "#065f46", border: "#10b981", label: "Completed" },
+          { color: "#78350f", border: "#f59e0b", label: "Partial" },
+          { color: "#7f1d1d", border: "#ef4444", label: "Missed" },
+          { color: "#1e293b", border: "#475569", label: "Workout day" },
+          { color: "#1e293b", border: "#334155", label: "Rest day" }
+        ].map(l => React.createElement("div", { key: l.label, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#94a3b8" } },
+          React.createElement("div", { style: { width: 14, height: 14, borderRadius: 4, background: l.color, border: `1px solid ${l.border}` } }),
+          l.label
+        ))
+      ),
+
+      React.createElement(Calendar, { month: calMonth, year: calYear, data, onDayClick: setSelectedDate })
+    ),
+
+    // Upcoming Challenges
+    React.createElement("div", { style: { marginBottom: 40 } },
+      React.createElement("h2", { style: { fontSize: 22, fontWeight: 800, marginBottom: 20 } }, "Next Challenges"),
+      React.createElement(UpcomingChallenges, { data })
+    ),
+
+    // Workout Legend
+    React.createElement("div", { style: { marginBottom: 40 } },
+      React.createElement("h2", { style: { fontSize: 22, fontWeight: 800, marginBottom: 20 } }, "Workout Plan"),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 } },
+        Object.entries(WORKOUT_TYPES).map(([day, w]) => {
+          const dayName = ['', 'Monday', '', 'Wednesday', '', 'Friday'][day];
+          return React.createElement("div", { key: day, style: { background: "#1e293b", borderRadius: 16, padding: 24, border: `1px solid ${w.color}33` } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } },
+              React.createElement("span", { style: { fontSize: 24 } }, w.emoji),
+              React.createElement("div", null,
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 16 } }, w.name),
+                React.createElement("div", { style: { fontSize: 12, color: w.color } }, dayName)
+              )
+            ),
+            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
+              w.exercises.map(ex => React.createElement("div", { key: ex.id, style: { fontSize: 13, color: "#cbd5e1", display: "flex", alignItems: "flex-start", gap: 8 } },
+                React.createElement("div", { style: { width: 6, height: 6, borderRadius: "50%", background: w.color, flexShrink: 0, marginTop: 6 } }),
+                ex.description
+              ))
+            )
+          );
+        })
+      )
+    ),
+
+    // Footer
+    React.createElement("div", { style: { textAlign: "center", padding: "24px 0", color: "#475569", fontSize: 13 } },
+      "Push to 50 \u2022 March 16 \u2013 August 15, 2026"
+    ),
+
+    // Modal
+    selectedDate && selectedWorkout && React.createElement(WorkoutModal, {
+      date: selectedDate,
+      workout: selectedWorkout,
+      data,
+      onSave: handleSave,
+      onClose: () => setSelectedDate(null)
+    })
+  );
+}
+
+ReactDOM.render(React.createElement(App), document.getElementById('root'));
+</script>
+</body>
+</html>

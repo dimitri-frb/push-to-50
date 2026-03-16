@@ -609,14 +609,8 @@ function App() {
 
     // Header
     React.createElement("div", { style: { textAlign: "center", marginBottom: 40 } },
-      React.createElement("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 24, marginBottom: 16 } },
-        React.createElement("img", { src: "arnold.jpg", alt: "Arnold Schwarzenegger", style: { width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: "3px solid #3b82f6", opacity: 0.9 } }),
-        React.createElement("div", null,
-          React.createElement("h1", { style: { fontSize: 48, fontWeight: 900, letterSpacing: -2, marginBottom: 4, background: "linear-gradient(135deg, #3b82f6, #8b5cf6, #ef4444)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } }, "PUSH TO 50"),
-          React.createElement("p", { style: { color: "#64748b", fontSize: 16, fontWeight: 500 } }, "Dimitri & Bram \u2022 50 unbroken push-ups by April 15th")
-        ),
-        React.createElement("img", { src: "goggins.jpg", alt: "David Goggins", style: { width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: "3px solid #ef4444", opacity: 0.9 } })
-      ),
+      React.createElement("h1", { style: { fontSize: 48, fontWeight: 900, letterSpacing: -2, marginBottom: 4, background: "linear-gradient(135deg, #3b82f6, #8b5cf6, #ef4444)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } }, "PUSH TO 50"),
+      React.createElement("p", { style: { color: "#64748b", fontSize: 16, fontWeight: 500 } }, "Dimitri & Bram \u2022 50 unbroken push-ups by April 15th"),
       React.createElement("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginTop: 16 } },
         React.createElement(ProgressRing, { value: maxUnbroken, max: 50, size: 64, strokeWidth: 5, color: "#8b5cf6" }),
         React.createElement("div", { style: { textAlign: "left" } },
@@ -690,34 +684,44 @@ function App() {
       React.createElement(UpcomingChallenges, { data })
     ),
 
-    // Workout Legend
-    React.createElement("div", { style: { marginBottom: 40 } },
-      React.createElement("h2", { style: { fontSize: 22, fontWeight: 800, marginBottom: 20 } }, "Workout Plan"),
-      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 } },
-        Object.entries(WORKOUT_TYPES).map(([day, w]) => {
-          const dayName = ['', 'Monday', '', 'Wednesday', '', 'Friday'][day];
-          return React.createElement("div", { key: day, style: { background: "#1e293b", borderRadius: 16, padding: 24, border: `1px solid ${w.color}33` } },
-            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } },
-              React.createElement("span", { style: { fontSize: 24 } }, w.emoji),
-              React.createElement("div", null,
-                React.createElement("div", { style: { fontWeight: 800, fontSize: 16 } }, w.name),
-                React.createElement("div", { style: { fontSize: 12, color: w.color } }, dayName)
-              )
-            ),
-            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
-              w.exercises.map(ex => React.createElement("div", { key: ex.id, style: { fontSize: 13, color: "#cbd5e1", display: "flex", alignItems: "flex-start", gap: 8 } },
-                React.createElement("div", { style: { width: 6, height: 6, borderRadius: "50%", background: w.color, flexShrink: 0, marginTop: 6 } }),
-                ex.description
-              ))
-            )
-          );
-        })
-      )
-    ),
 
-    // Footer
+    // Footer with export/import
     React.createElement("div", { style: { textAlign: "center", padding: "24px 0", color: "#475569", fontSize: 13 } },
-      "Push to 50 \u2022 March 16 \u2013 April 15, 2026"
+      React.createElement("div", null, "Push to 50 \u2022 March 16 \u2013 April 15, 2026"),
+      React.createElement("div", { style: { marginTop: 12, display: "flex", justifyContent: "center", gap: 8 } },
+        React.createElement("button", {
+          className: "btn btn-ghost",
+          style: { fontSize: 11, padding: "4px 12px" },
+          onClick: () => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'pushto50-backup.json'; a.click();
+            URL.revokeObjectURL(url);
+          }
+        }, "Export data"),
+        React.createElement("button", {
+          className: "btn btn-ghost",
+          style: { fontSize: 11, padding: "4px 12px" },
+          onClick: () => {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = '.json';
+            input.onchange = (e) => {
+              const file = e.target.files[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = (ev) => {
+                try {
+                  const imported = JSON.parse(ev.target.result);
+                  setData(imported);
+                } catch { alert('Invalid backup file'); }
+              };
+              reader.readAsText(file);
+            };
+            input.click();
+          }
+        }, "Import data")
+      )
     ),
 
     // Modal

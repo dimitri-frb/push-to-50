@@ -167,7 +167,9 @@ function ladderTotal(maxSerie) {
   return total;
 }
 
-// ── Data persistence ──
+// ── Data persistence (localStorage + cloud sync) ──
+const CLOUD_URL = 'https://jsonblob.com/api/jsonBlob/019cf8dc-be54-70f7-8dd4-17fe3c52d332';
+
 function loadData() {
   try {
     const raw = localStorage.getItem('pushto50_data');
@@ -177,6 +179,18 @@ function loadData() {
 
 function saveData(data) {
   localStorage.setItem('pushto50_data', JSON.stringify(data));
+  // Sync to cloud (fire and forget)
+  fetch(CLOUD_URL, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).catch(() => {});
+}
+
+function loadCloudData() {
+  return fetch(CLOUD_URL)
+    .then(r => r.json())
+    .catch(() => null);
 }
 
 function countPushups(pd) {
@@ -574,8 +588,25 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear());
+  const [syncStatus, setSyncStatus] = useState("loading");
 
-  useEffect(() => { saveData(data); }, [data]);
+  // On mount: fetch cloud data and merge with local
+  useEffect(() => {
+    loadCloudData().then(cloudData => {
+      if (cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0) {
+        setData(prev => {
+          // Merge: cloud wins for keys that exist in cloud, local fills gaps
+          const merged = { ...prev, ...cloudData };
+          localStorage.setItem('pushto50_data', JSON.stringify(merged));
+          return merged;
+        });
+      }
+      setSyncStatus("synced");
+    }).catch(() => setSyncStatus("offline"));
+  }, []);
+
+  // Save locally + to cloud on every change
+  useEffect(() => { if (syncStatus !== "loading") saveData(data); }, [data]);
 
   const handleSave = (dateKey, dayData) => {
     setData(prev => {
@@ -687,7 +718,12 @@ function App() {
 
     // Footer with export/import
     React.createElement("div", { style: { textAlign: "center", padding: "24px 0", color: "#475569", fontSize: 13 } },
-      React.createElement("div", null, "Push to 50 \u2022 March 16 \u2013 April 15, 2026"),
+      React.createElement("div", null,
+        "Push to 50 \u2022 March 16 \u2013 April 15, 2026 \u2022 ",
+        React.createElement("span", { style: { color: syncStatus === "synced" ? "#10b981" : syncStatus === "loading" ? "#f59e0b" : "#ef4444" } },
+          syncStatus === "synced" ? "\u2601 Synced" : syncStatus === "loading" ? "\u23F3 Syncing..." : "\u26A0 Offline"
+        )
+      ),
       React.createElement("div", { style: { marginTop: 12, display: "flex", justifyContent: "center", gap: 8 } },
         React.createElement("button", {
           className: "btn btn-ghost",

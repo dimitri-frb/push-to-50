@@ -628,7 +628,7 @@ function App() {
           return h("div", { key: p.id, style: { textAlign: "center" } },
             h("div", { style: { position: "relative", display: "inline-block" } },
               h(ProgressRing, { value: stats.max, max: 50, size: 72, strokeWidth: 5, color: p.color }),
-              h("div", { style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, transform: "rotate(90deg)" } }, stats.max)
+              h("div", { style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800 } }, stats.max)
             ),
             h("div", { style: { fontSize: 13, fontWeight: 700, color: p.light, marginTop: 6 } }, p.name),
             h("div", { style: { fontSize: 11, color: "#64748b" } }, `${stats.max}/50 best`)

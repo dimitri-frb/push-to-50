@@ -136,9 +136,35 @@ function ladderTotal(maxSerie) {
 // ── Data persistence ──
 const CLOUD_URL = 'https://jsonblob.com/api/jsonBlob/019cf8dc-be54-70f7-8dd4-17fe3c52d332';
 function loadData() { try { const raw = localStorage.getItem('pushto50_data'); return raw ? JSON.parse(raw) : {}; } catch { return {}; } }
+
+// Deep merge: per date key, per player — never lose the other player's data
+function deepMerge(local, cloud) {
+  const merged = { ...local };
+  if (!cloud || typeof cloud !== 'object') return merged;
+  Object.keys(cloud).forEach(dateKey => {
+    if (!merged[dateKey]) merged[dateKey] = {};
+    // Merge each player's data within the date
+    Object.keys(cloud[dateKey]).forEach(playerId => {
+      // Cloud player data wins if local doesn't have it, otherwise keep most recent (cloud wins on sync)
+      if (!merged[dateKey][playerId]) {
+        merged[dateKey][playerId] = cloud[dateKey][playerId];
+      }
+    });
+  });
+  return merged;
+}
+
 function saveData(data) {
   localStorage.setItem('pushto50_data', JSON.stringify(data));
-  fetch(CLOUD_URL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+  // Read-merge-write: fetch cloud first, merge, then save
+  fetch(CLOUD_URL).then(r => r.json()).then(cloudData => {
+    const merged = deepMerge(data, cloudData);
+    localStorage.setItem('pushto50_data', JSON.stringify(merged));
+    return fetch(CLOUD_URL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(merged) });
+  }).catch(() => {
+    // Offline fallback: just push local data
+    fetch(CLOUD_URL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+  });
 }
 function loadCloudData() { return fetch(CLOUD_URL).then(r => r.json()).catch(() => null); }
 
@@ -573,7 +599,7 @@ function App() {
     loadCloudData().then(cloudData => {
       if (cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0) {
         setData(prev => {
-          const merged = { ...prev, ...cloudData };
+          const merged = deepMerge(prev, cloudData);
           localStorage.setItem('pushto50_data', JSON.stringify(merged));
           return merged;
         });

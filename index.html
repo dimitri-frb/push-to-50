@@ -36,6 +36,7 @@
     .badge-mon { background: #1e40af; color: #93c5fd; }
     .badge-wed { background: #7e22ce; color: #c4b5fd; }
     .badge-fri { background: #b91c1c; color: #fca5a5; }
+    .badge-daily { background: #065f46; color: #6ee7b7; }
 
     .input-field { background: #0f172a; border: 1px solid #475569; border-radius: 10px; padding: 10px 14px; color: #f1f5f9; font-size: 16px; width: 100%; outline: none; transition: border-color 0.2s; }
     .input-field:focus { border-color: #60a5fa; }
@@ -110,18 +111,33 @@ const WORKOUT_TYPES = {
   }
 };
 
+const DAILY_WORKOUT = {
+  name: "Daily Basics",
+  emoji: "\u{1F9D8}",
+  color: "#10b981",
+  badgeClass: "badge-daily",
+  description: "2x10 push-ups, perfect form",
+  exercises: [
+    { id: "basics", name: "Perfect Form Push-ups", type: "sets", sets: 2, targetReps: 10, description: "2x10 push-ups, perfect form" }
+  ]
+};
+
 // ── Helpers ──
 function getDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
 
 function isWorkoutDay(date) {
+  return true; // every day is a workout day now
+}
+
+function isMainWorkoutDay(date) {
   const dow = date.getDay();
   return dow === 1 || dow === 3 || dow === 5;
 }
 
 function getWorkoutType(date) {
-  return WORKOUT_TYPES[date.getDay()] || null;
+  return WORKOUT_TYPES[date.getDay()] || DAILY_WORKOUT;
 }
 
 function isInChallenge(date) {
@@ -201,6 +217,7 @@ function countPushups(pd) {
   if (pd.slowmo) total += pd.slowmo.reduce((s, v) => s + (v || 0), 0);
   if (pd.maxreps) total += (pd.maxreps || 0);
   if (pd.burnout) total += pd.burnout.reduce((s, v) => s + (v || 0), 0);
+  if (pd.basics) total += pd.basics.reduce((s, v) => s + (v || 0), 0);
   return total;
 }
 
@@ -283,7 +300,8 @@ function WorkoutModal({ date, workout, data, onSave, onClose }) {
     diamond: existing.diamond || Array(3).fill(''),
     slowmo: existing.slowmo || Array(3).fill(''),
     maxreps: existing.maxreps || '',
-    burnout: existing.burnout || Array(4).fill('')
+    burnout: existing.burnout || Array(4).fill(''),
+    basics: existing.basics || Array(2).fill('')
   }));
 
   const updateField = (field, value) => {
@@ -305,7 +323,8 @@ function WorkoutModal({ date, workout, data, onSave, onClose }) {
       diamond: formData.diamond.map(v => parseInt(v) || 0),
       slowmo: formData.slowmo.map(v => parseInt(v) || 0),
       maxreps: parseInt(formData.maxreps) || 0,
-      burnout: formData.burnout.map(v => parseInt(v) || 0)
+      burnout: formData.burnout.map(v => parseInt(v) || 0),
+      basics: formData.basics.map(v => parseInt(v) || 0)
     };
     onSave(dateKey, cleaned);
   };
@@ -471,24 +490,25 @@ function Calendar({ month, year, data, onDayClick }) {
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d);
     const dateKey = getDateKey(date);
-    const isWorkout = isWorkoutDay(date) && isInChallenge(date);
+    const inChallenge = isInChallenge(date);
     const isTodayDate = isToday(date);
     const isPastDate = isPast(date);
-    const workout = getWorkoutType(date);
-    const status = isWorkout ? getDayStatus(data, dateKey, workout) : null;
-    const inChallenge = isInChallenge(date);
+    const workout = inChallenge ? getWorkoutType(date) : null;
+    const isMain = isMainWorkoutDay(date);
+    const status = inChallenge ? getDayStatus(data, dateKey, workout) : null;
 
     let className = "cal-day";
     if (isTodayDate) className += " today";
     if (!inChallenge) {
       className += " rest";
-    } else if (isWorkout) {
-      if (status === 'completed') className += " completed";
-      else if (status === 'partial') className += " partial";
-      else if (isPastDate) className += " missed";
-      else className += " workout-day future";
+    } else if (status === 'completed') {
+      className += " completed";
+    } else if (status === 'partial') {
+      className += " partial";
+    } else if (isPastDate) {
+      className += " missed";
     } else {
-      className += " rest";
+      className += " workout-day future";
     }
 
     const dotColor = workout ? workout.color : null;
@@ -496,12 +516,12 @@ function Calendar({ month, year, data, onDayClick }) {
     cells.push(React.createElement("div", {
       key: d,
       className,
-      onClick: () => isWorkout && inChallenge && onDayClick(date),
-      style: { cursor: isWorkout && inChallenge ? 'pointer' : 'default' }
+      onClick: () => inChallenge && onDayClick(date),
+      style: { cursor: inChallenge ? 'pointer' : 'default' }
     },
       React.createElement("span", null, d),
-      isWorkout && inChallenge && React.createElement("div", {
-        style: { width: 6, height: 6, borderRadius: "50%", background: dotColor, marginTop: 2, opacity: 0.8 }
+      inChallenge && React.createElement("div", {
+        style: { width: isMain ? 6 : 4, height: isMain ? 6 : 4, borderRadius: "50%", background: dotColor, marginTop: 2, opacity: isMain ? 0.8 : 0.5 }
       }),
       status === 'completed' && React.createElement("span", { style: { position: "absolute", top: 2, right: 4, fontSize: 10 } }, "\u2713")
     ));
@@ -533,7 +553,7 @@ function UpcomingChallenges({ data }) {
   const d = new Date(today);
 
   while (upcoming.length < 3 && d <= CHALLENGE_END) {
-    if (isWorkoutDay(d) && isInChallenge(d)) {
+    if (isInChallenge(d)) {
       const dateKey = getDateKey(d);
       const workout = getWorkoutType(d);
       const status = getDayStatus(data, dateKey, workout);
@@ -698,8 +718,7 @@ function App() {
           { color: "#065f46", border: "#10b981", label: "Completed" },
           { color: "#78350f", border: "#f59e0b", label: "Partial" },
           { color: "#7f1d1d", border: "#ef4444", label: "Missed" },
-          { color: "#1e293b", border: "#475569", label: "Workout day" },
-          { color: "#1e293b", border: "#334155", label: "Rest day" }
+          { color: "#1e293b", border: "#475569", label: "Upcoming" }
         ].map(l => React.createElement("div", { key: l.label, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#94a3b8" } },
           React.createElement("div", { style: { width: 14, height: 14, borderRadius: 4, background: l.color, border: `1px solid ${l.border}` } }),
           l.label

@@ -167,6 +167,11 @@ function getPlayerStats(data, playerId) {
     total += dayTotal;
     if (pd.ladderMax && pd.ladderMax > max) max = pd.ladderMax;
     if (pd.maxreps && pd.maxreps > max) max = pd.maxreps;
+    // Check all set-based exercises for individual rep maxes
+    ['clean', 'diamond', 'slowmo', 'basics'].forEach(k => {
+      if (pd[k]) pd[k].forEach(v => { if (v && v > max) max = v; });
+    });
+    if (pd.burnout) pd.burnout.forEach(v => { if (v && v > max) max = v; });
   });
   return { total, max, sessions };
 }
@@ -601,10 +606,6 @@ function App() {
   const monthLabel = new Date(calYear, calMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const selectedWorkout = selectedDate ? getWorkoutType(selectedDate) : null;
 
-  // Who's winning?
-  const leader = dStats.total > bStats.total ? 'Dimitri' : bStats.total > dStats.total ? 'Bram' : 'Tied';
-  const leadColor = leader === 'Dimitri' ? PLAYERS[0].color : leader === 'Bram' ? PLAYERS[1].color : '#64748b';
-
   return h("div", { style: { maxWidth: 960, margin: "0 auto", padding: "24px 16px" } },
 
     // Header
@@ -635,15 +636,6 @@ function App() {
         }),
       ),
 
-      // Leaderboard total bar
-      h("div", { style: { maxWidth: 300, margin: "16px auto 0" } },
-        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 } },
-          h("span", { style: { color: PLAYERS[0].light, fontWeight: 600 } }, dStats.total),
-          h("span", { style: { color: leadColor, fontWeight: 700, fontSize: 11 } }, leader === 'Tied' ? 'TIED' : `${leader} leads`),
-          h("span", { style: { color: PLAYERS[1].light, fontWeight: 600 } }, bStats.total)
-        ),
-        h(LeaderboardBar, { valA: dStats.total, valB: bStats.total, colorA: PLAYERS[0].color, colorB: PLAYERS[1].color })
-      )
     ),
 
     // Head-to-head KPIs

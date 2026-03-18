@@ -22,12 +22,8 @@
     .cal-day { width: 100%; aspect-ratio: 1; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; position: relative; }
     .cal-day:hover { transform: scale(1.05); }
     .cal-day.today { box-shadow: 0 0 0 2px #60a5fa; }
-    .cal-day.completed { background: #065f46; border: 1px solid #10b981; }
-    .cal-day.partial { background: #78350f; border: 1px solid #f59e0b; }
-    .cal-day.missed { background: #7f1d1d; border: 1px solid #ef4444; }
     .cal-day.rest { background: #1e293b; border: 1px solid #334155; color: #64748b; }
-    .cal-day.future { background: #1e293b; border: 1px solid #334155; }
-    .cal-day.workout-day.future { background: #1e293b; border: 1px solid #475569; }
+    .cal-day.future { background: #1e293b; border: 1px solid #475569; }
 
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; }
     .modal { background: #1e293b; border-radius: 20px; padding: 32px; border: 1px solid #475569; max-width: 480px; width: 90%; max-height: 90vh; overflow-y: auto; }
@@ -55,14 +51,19 @@
     .ladder-preview { display: flex; gap: 4px; align-items: flex-end; margin-top: 8px; }
     .ladder-block { background: #3b82f6; border-radius: 4px; min-width: 24px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; padding: 2px 4px; }
 
+    .player-tab { padding: 8px 20px; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; background: #0f172a; color: #64748b; }
+    .player-tab.active { color: white; }
+    .player-tab.dimitri.active { border-color: #3b82f6; background: #1e3a5f; color: #93c5fd; }
+    .player-tab.bram.active { border-color: #8b5cf6; background: #2e1065; color: #c4b5fd; }
+
+    .leaderboard-bar { height: 8px; border-radius: 4px; background: #334155; overflow: hidden; position: relative; }
+
     @media (max-width: 768px) {
-      .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      .kpi-grid { grid-template-columns: 1fr !important; }
       .challenges-grid { grid-template-columns: 1fr !important; }
       .cal-day { font-size: 12px !important; border-radius: 8px !important; }
       .modal { padding: 24px; }
-    }
-    @media (max-width: 480px) {
-      .kpi-grid { grid-template-columns: 1fr !important; }
+      .h2h-grid { grid-template-columns: 1fr !important; }
     }
   </style>
 </head>
@@ -70,52 +71,39 @@
 <div id="root"></div>
 <script>
 const { useState, useEffect, useMemo } = React;
+const h = React.createElement;
 
 // ── Constants ──
-const CHALLENGE_START = new Date(2026, 2, 16); // March 16, 2026
-const CHALLENGE_END = new Date(2026, 3, 15);   // April 15, 2026
+const CHALLENGE_START = new Date(2026, 2, 16);
+const CHALLENGE_END = new Date(2026, 3, 15);
+const PLAYERS = [
+  { id: "dimitri", name: "Dimitri", color: "#3b82f6", light: "#93c5fd", bg: "#1e3a5f" },
+  { id: "bram", name: "Bram", color: "#8b5cf6", light: "#c4b5fd", bg: "#2e1065" }
+];
 
 const WORKOUT_TYPES = {
-  1: { // Monday
-    name: "The Ladder",
-    emoji: "\u{1F4AA}",
-    color: "#3b82f6",
-    badgeClass: "badge-mon",
+  1: { name: "The Ladder", emoji: "\u{1F4AA}", color: "#3b82f6", badgeClass: "badge-mon",
     description: "Alternating ladder series + finisher",
     exercises: [
       { id: "ladder", name: "The Ladder", type: "ladder", description: "Series of 5, 6, 7, 8, 9... alternating until you break" },
       { id: "clean", name: "Clean Push-ups", type: "sets", sets: 3, targetReps: 10, description: "3x10 clean push-ups" }
-    ]
-  },
-  3: { // Wednesday
-    name: "The Power",
-    emoji: "\u{26A1}",
-    color: "#8b5cf6",
-    badgeClass: "badge-wed",
+    ]},
+  3: { name: "The Power", emoji: "\u{26A1}", color: "#8b5cf6", badgeClass: "badge-wed",
     description: "Strength-focused push-up variations",
     exercises: [
       { id: "diamond", name: "Diamond Push-ups", type: "sets", sets: 3, targetReps: 8, description: "3x8 diamond push-ups" },
       { id: "slowmo", name: "Slow-Mo Push-ups", type: "sets", sets: 3, targetReps: 10, description: "3x10 slow-mo push-ups" }
-    ]
-  },
-  5: { // Friday
-    name: "The Burnout",
-    emoji: "\u{1F525}",
-    color: "#ef4444",
-    badgeClass: "badge-fri",
+    ]},
+  5: { name: "The Burnout", emoji: "\u{1F525}", color: "#ef4444", badgeClass: "badge-fri",
     description: "Max reps + high-volume burnout",
     exercises: [
       { id: "maxreps", name: "Set 1: Max Reps", type: "single", description: "Max reps without stopping" },
       { id: "burnout", name: "Sets 2-5: 60% of max", type: "burnout", sets: 4, description: "90s rest between sets. Each set = 60% of Set 1 max" }
-    ]
-  }
+    ]}
 };
 
 const DAILY_WORKOUT = {
-  name: "Daily Basics",
-  emoji: "\u{1F9D8}",
-  color: "#10b981",
-  badgeClass: "badge-daily",
+  name: "Daily Basics", emoji: "\u{1F9D8}", color: "#10b981", badgeClass: "badge-daily",
   description: "2x10 push-ups, perfect form",
   exercises: [
     { id: "basics", name: "Perfect Form Push-ups", type: "sets", sets: 2, targetReps: 10, description: "2x10 push-ups, perfect form" }
@@ -126,56 +114,18 @@ const DAILY_WORKOUT = {
 function getDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
-
-function isWorkoutDay(date) {
-  return true; // every day is a workout day now
-}
-
-function isMainWorkoutDay(date) {
-  const dow = date.getDay();
-  return dow === 1 || dow === 3 || dow === 5;
-}
-
-function getWorkoutType(date) {
-  return WORKOUT_TYPES[date.getDay()] || DAILY_WORKOUT;
-}
-
+function isMainWorkoutDay(date) { const dow = date.getDay(); return dow === 1 || dow === 3 || dow === 5; }
+function getWorkoutType(date) { return WORKOUT_TYPES[date.getDay()] || DAILY_WORKOUT; }
 function isInChallenge(date) {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   return d >= CHALLENGE_START && d <= CHALLENGE_END;
 }
+function getDaysLeft() { return Math.max(0, Math.ceil((CHALLENGE_END - new Date()) / 86400000)); }
+function getDaysSinceStart() { return Math.max(1, Math.ceil((new Date() - CHALLENGE_START) / 86400000)); }
+function getWeekNumber(date) { return Math.floor((date - CHALLENGE_START) / 86400000 / 7) + 1; }
+function isToday(date) { const t = new Date(); return date.getDate() === t.getDate() && date.getMonth() === t.getMonth() && date.getFullYear() === t.getFullYear(); }
+function isPast(date) { const t = new Date(); t.setHours(0,0,0,0); const d = new Date(date); d.setHours(0,0,0,0); return d < t; }
 
-function getDaysLeft() {
-  const today = new Date();
-  const diff = Math.ceil((CHALLENGE_END - today) / (1000 * 60 * 60 * 24));
-  return Math.max(0, diff);
-}
-
-function getDaysSinceStart() {
-  const today = new Date();
-  const diff = Math.ceil((today - CHALLENGE_START) / (1000 * 60 * 60 * 24));
-  return Math.max(1, diff);
-}
-
-function getWeekNumber(date) {
-  const diff = Math.floor((date - CHALLENGE_START) / (1000 * 60 * 60 * 24));
-  return Math.floor(diff / 7) + 1;
-}
-
-function isToday(date) {
-  const t = new Date();
-  return date.getDate() === t.getDate() && date.getMonth() === t.getMonth() && date.getFullYear() === t.getFullYear();
-}
-
-function isPast(date) {
-  const t = new Date();
-  t.setHours(0,0,0,0);
-  const d = new Date(date);
-  d.setHours(0,0,0,0);
-  return d < t;
-}
-
-// Ladder: if max serie is N, total pushups = 5+6+7+...+N = sum from 5 to N
 function ladderTotal(maxSerie) {
   if (!maxSerie || maxSerie < 5) return 0;
   let total = 0;
@@ -183,33 +133,19 @@ function ladderTotal(maxSerie) {
   return total;
 }
 
-// ── Data persistence (localStorage + cloud sync) ──
+// ── Data persistence ──
 const CLOUD_URL = 'https://jsonblob.com/api/jsonBlob/019cf8dc-be54-70f7-8dd4-17fe3c52d332';
-
-function loadData() {
-  try {
-    const raw = localStorage.getItem('pushto50_data');
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
-}
-
+function loadData() { try { const raw = localStorage.getItem('pushto50_data'); return raw ? JSON.parse(raw) : {}; } catch { return {}; } }
 function saveData(data) {
   localStorage.setItem('pushto50_data', JSON.stringify(data));
-  // Sync to cloud (fire and forget)
-  fetch(CLOUD_URL, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).catch(() => {});
+  fetch(CLOUD_URL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
 }
+function loadCloudData() { return fetch(CLOUD_URL).then(r => r.json()).catch(() => null); }
 
-function loadCloudData() {
-  return fetch(CLOUD_URL)
-    .then(r => r.json())
-    .catch(() => null);
-}
-
+// ── Player data helpers ──
+// Data shape: data[dateKey] = { dimitri: { ladderMax, clean, ... }, bram: { ... } }
 function countPushups(pd) {
+  if (!pd) return 0;
   let total = 0;
   if (pd.ladderMax) total += ladderTotal(pd.ladderMax);
   if (pd.clean) total += pd.clean.reduce((s, v) => s + (v || 0), 0);
@@ -221,24 +157,23 @@ function countPushups(pd) {
   return total;
 }
 
-function getTotalPushups(data) {
-  let total = 0;
-  Object.values(data).forEach(pd => { total += countPushups(pd); });
-  return total;
-}
-
-function getMaxUnbroken(data) {
-  let max = 0;
-  Object.values(data).forEach(pd => {
+function getPlayerStats(data, playerId) {
+  let total = 0, max = 0, sessions = 0;
+  Object.values(data).forEach(dayData => {
+    const pd = dayData[playerId];
+    if (!pd) return;
+    const dayTotal = countPushups(pd);
+    if (dayTotal > 0) sessions++;
+    total += dayTotal;
     if (pd.ladderMax && pd.ladderMax > max) max = pd.ladderMax;
     if (pd.maxreps && pd.maxreps > max) max = pd.maxreps;
   });
-  return max;
+  return { total, max, sessions };
 }
 
-function getDayStatus(data, dateKey, workout) {
-  const pd = data[dateKey];
-  if (!pd) return null;
+function getPlayerDayStatus(dayData, playerId, workout) {
+  if (!dayData || !dayData[playerId]) return null;
+  const pd = dayData[playerId];
   const completion = getCompletionLevel(pd, workout);
   if (completion >= 1) return 'completed';
   if (completion > 0) return 'partial';
@@ -246,22 +181,18 @@ function getDayStatus(data, dateKey, workout) {
 }
 
 function getCompletionLevel(pd, workout) {
-  if (!workout) return 0;
-  let completed = 0;
-  let total = 0;
+  if (!workout || !pd) return 0;
+  let completed = 0, total = 0;
   workout.exercises.forEach(ex => {
     total++;
-    if (ex.type === 'ladder') {
-      if (pd.ladderMax && pd.ladderMax >= 5) completed++;
-    } else if (ex.type === 'sets') {
+    if (ex.type === 'ladder') { if (pd.ladderMax && pd.ladderMax >= 5) completed++; }
+    else if (ex.type === 'sets') {
       const vals = pd[ex.id];
       if (vals && vals.length === ex.sets && vals.every(v => v >= ex.targetReps)) completed++;
       else if (vals && vals.some(v => v > 0)) completed += 0.5;
-    } else if (ex.type === 'single') {
-      if (pd.maxreps && pd.maxreps > 0) completed++;
-    } else if (ex.type === 'burnout') {
-      if (pd.burnout && pd.burnout.length > 0 && pd.burnout.some(v => v > 0)) completed++;
     }
+    else if (ex.type === 'single') { if (pd.maxreps && pd.maxreps > 0) completed++; }
+    else if (ex.type === 'burnout') { if (pd.burnout && pd.burnout.length > 0 && pd.burnout.some(v => v > 0)) completed++; }
   });
   return total > 0 ? completed / total : 0;
 }
@@ -273,41 +204,72 @@ function ProgressRing({ value, max, size = 80, strokeWidth = 6, color = "#3b82f6
   const circumference = radius * 2 * Math.PI;
   const pct = Math.min(value / max, 1);
   const offset = circumference - pct * circumference;
-  return React.createElement("svg", { width: size, height: size, className: "progress-ring" },
-    React.createElement("circle", { cx: size/2, cy: size/2, r: radius, fill: "none", stroke: "#334155", strokeWidth }),
-    React.createElement("circle", { cx: size/2, cy: size/2, r: radius, fill: "none", stroke: color, strokeWidth, strokeDasharray: circumference, strokeDashoffset: offset, strokeLinecap: "round", style: { transition: "stroke-dashoffset 0.5s ease" } })
+  return h("svg", { width: size, height: size, className: "progress-ring" },
+    h("circle", { cx: size/2, cy: size/2, r: radius, fill: "none", stroke: "#334155", strokeWidth }),
+    h("circle", { cx: size/2, cy: size/2, r: radius, fill: "none", stroke: color, strokeWidth, strokeDasharray: circumference, strokeDashoffset: offset, strokeLinecap: "round", style: { transition: "stroke-dashoffset 0.5s ease" } })
   );
 }
 
-function KPICard({ label, value, icon, color, subLabel }) {
-  return React.createElement("div", { className: "kpi-card" },
-    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12 } },
-      React.createElement("span", { style: { fontSize: 24 } }, icon),
-      React.createElement("span", { style: { fontSize: 13, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 } }, label)
+function LeaderboardBar({ valA, valB, colorA, colorB }) {
+  const total = valA + valB;
+  const pctA = total > 0 ? (valA / total) * 100 : 50;
+  return h("div", { className: "leaderboard-bar" },
+    h("div", { style: { position: "absolute", left: 0, top: 0, bottom: 0, width: pctA + "%", background: colorA, borderRadius: 4, transition: "width 0.5s ease" } }),
+    h("div", { style: { position: "absolute", right: 0, top: 0, bottom: 0, width: (100 - pctA) + "%", background: colorB, borderRadius: 4, transition: "width 0.5s ease" } })
+  );
+}
+
+function HeadToHeadKPI({ label, icon, dimitriVal, bramVal, unit }) {
+  const dWins = dimitriVal > bramVal;
+  const bWins = bramVal > dimitriVal;
+  return h("div", { className: "kpi-card" },
+    h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } },
+      h("span", { style: { fontSize: 20 } }, icon),
+      h("span", { style: { fontSize: 12, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 } }, label)
     ),
-    React.createElement("div", { style: { fontSize: 32, fontWeight: 800, color: color || "#f1f5f9" } }, value),
-    subLabel && React.createElement("div", { style: { fontSize: 12, color: "#64748b", marginTop: 4 } }, subLabel)
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+      h("div", { style: { textAlign: "left" } },
+        h("div", { style: { fontSize: 11, color: PLAYERS[0].light, fontWeight: 600, marginBottom: 2 } }, "Dimitri"),
+        h("div", { style: { fontSize: 26, fontWeight: 800, color: dWins ? PLAYERS[0].color : "#f1f5f9" } }, dimitriVal, unit && h("span", { style: { fontSize: 12, color: "#64748b", fontWeight: 400 } }, " " + unit))
+      ),
+      h("div", { style: { fontSize: 12, color: "#475569", fontWeight: 700 } }, "vs"),
+      h("div", { style: { textAlign: "right" } },
+        h("div", { style: { fontSize: 11, color: PLAYERS[1].light, fontWeight: 600, marginBottom: 2 } }, "Bram"),
+        h("div", { style: { fontSize: 26, fontWeight: 800, color: bWins ? PLAYERS[1].color : "#f1f5f9" } }, bramVal, unit && h("span", { style: { fontSize: 12, color: "#64748b", fontWeight: 400 } }, " " + unit))
+      )
+    ),
+    h(LeaderboardBar, { valA: dimitriVal, valB: bramVal, colorA: PLAYERS[0].color, colorB: PLAYERS[1].color })
   );
 }
 
 function WorkoutModal({ date, workout, data, onSave, onClose }) {
   const dateKey = getDateKey(date);
-  const existing = data[dateKey] || {};
+  const dayData = data[dateKey] || {};
+  const [activePlayer, setActivePlayer] = useState("dimitri");
+  const player = PLAYERS.find(p => p.id === activePlayer);
 
-  const [formData, setFormData] = useState(() => ({
-    ladderMax: existing.ladderMax || '',
-    clean: existing.clean || Array(3).fill(''),
-    diamond: existing.diamond || Array(3).fill(''),
-    slowmo: existing.slowmo || Array(3).fill(''),
-    maxreps: existing.maxreps || '',
-    burnout: existing.burnout || Array(4).fill(''),
-    basics: existing.basics || Array(2).fill('')
-  }));
+  const existing = dayData[activePlayer] || {};
+  const [formData, setFormData] = useState(() => initForm(existing));
 
-  const updateField = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  function initForm(ex) {
+    return {
+      ladderMax: ex.ladderMax || '',
+      clean: ex.clean || Array(3).fill(''),
+      diamond: ex.diamond || Array(3).fill(''),
+      slowmo: ex.slowmo || Array(3).fill(''),
+      maxreps: ex.maxreps || '',
+      burnout: ex.burnout || Array(4).fill(''),
+      basics: ex.basics || Array(2).fill('')
+    };
+  }
 
+  // When switching players, reload their data
+  useEffect(() => {
+    const ex = dayData[activePlayer] || {};
+    setFormData(initForm(ex));
+  }, [activePlayer]);
+
+  const updateField = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
   const updateArrayField = (field, index, value) => {
     setFormData(prev => {
       const arr = [...(prev[field] || [])];
@@ -326,135 +288,116 @@ function WorkoutModal({ date, workout, data, onSave, onClose }) {
       burnout: formData.burnout.map(v => parseInt(v) || 0),
       basics: formData.basics.map(v => parseInt(v) || 0)
     };
-    onSave(dateKey, cleaned);
+    onSave(dateKey, activePlayer, cleaned);
   };
 
-  const handleClear = () => {
-    onSave(dateKey, null);
-  };
+  const handleClear = () => onSave(dateKey, activePlayer, null);
 
   const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
   const dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  // Show status of other player
+  const otherPlayer = PLAYERS.find(p => p.id !== activePlayer);
+  const otherStatus = getPlayerDayStatus(dayData, otherPlayer.id, workout);
+  const otherPushups = countPushups(dayData[otherPlayer.id]);
 
   const renderExercise = (ex) => {
     if (ex.type === 'ladder') {
       const maxSerie = parseInt(formData.ladderMax) || 0;
       const total = ladderTotal(maxSerie);
       const series = [];
-      if (maxSerie >= 5) {
-        for (let i = 5; i <= maxSerie; i++) series.push(i);
-      }
-      return React.createElement("div", { key: ex.id, style: { marginBottom: 20 } },
-        React.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
-        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
-        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
-          React.createElement("div", null,
-            React.createElement("div", { style: { fontSize: 11, color: "#64748b", marginBottom: 4 } }, "Max serie reached"),
-            React.createElement("input", {
-              className: "input-field",
-              type: "number",
-              value: formData.ladderMax,
-              onChange: (e) => updateField('ladderMax', e.target.value),
-              style: { width: 80, textAlign: "center" },
-              placeholder: "e.g. 9"
-            })
+      if (maxSerie >= 5) { for (let i = 5; i <= maxSerie; i++) series.push(i); }
+      return h("div", { key: ex.id, style: { marginBottom: 20 } },
+        h("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
+        h("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
+        h("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+          h("div", null,
+            h("div", { style: { fontSize: 11, color: "#64748b", marginBottom: 4 } }, "Max serie reached"),
+            h("input", { className: "input-field", type: "number", value: formData.ladderMax, onChange: (e) => updateField('ladderMax', e.target.value), style: { width: 80, textAlign: "center" }, placeholder: "e.g. 9" })
           ),
-          total > 0 && React.createElement("div", { style: { fontSize: 13, color: "#94a3b8" } },
-            `= ${series.join(' + ')} = `, React.createElement("span", { style: { color: "#3b82f6", fontWeight: 700 } }, `${total} push-ups`)
-          )
+          total > 0 && h("div", { style: { fontSize: 13, color: "#94a3b8" } }, `= ${series.join(' + ')} = `, h("span", { style: { color: player.color, fontWeight: 700 } }, `${total} push-ups`))
         ),
-        series.length > 0 && React.createElement("div", { className: "ladder-preview" },
-          series.map(n => React.createElement("div", {
-            key: n, className: "ladder-block",
-            style: { height: n * 3 + 10 }
-          }, n))
-        )
+        series.length > 0 && h("div", { className: "ladder-preview" }, series.map(n => h("div", { key: n, className: "ladder-block", style: { height: n * 3 + 10, background: player.color } }, n)))
       );
     }
-
     if (ex.type === 'sets') {
       const vals = formData[ex.id] || [];
-      return React.createElement("div", { key: ex.id, style: { marginBottom: 20 } },
-        React.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
-        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
-        React.createElement("div", { style: { display: "flex", gap: 8 } },
-          Array.from({ length: ex.sets }).map((_, i) => React.createElement("div", { key: i, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2 } },
-            React.createElement("span", { style: { fontSize: 11, color: "#64748b" } }, `Set ${i + 1}`),
-            React.createElement("input", {
-              className: "input-field",
-              type: "number",
-              value: vals[i] || '',
-              onChange: (e) => updateArrayField(ex.id, i, e.target.value),
-              style: { width: 64, textAlign: "center" },
-              placeholder: String(ex.targetReps)
-            })
+      return h("div", { key: ex.id, style: { marginBottom: 20 } },
+        h("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
+        h("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
+        h("div", { style: { display: "flex", gap: 8 } },
+          Array.from({ length: ex.sets }).map((_, i) => h("div", { key: i, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2 } },
+            h("span", { style: { fontSize: 11, color: "#64748b" } }, `Set ${i + 1}`),
+            h("input", { className: "input-field", type: "number", value: vals[i] || '', onChange: (e) => updateArrayField(ex.id, i, e.target.value), style: { width: 64, textAlign: "center" }, placeholder: String(ex.targetReps) })
           ))
         )
       );
     }
-
     if (ex.type === 'single') {
-      return React.createElement("div", { key: ex.id, style: { marginBottom: 20 } },
-        React.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
-        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
-        React.createElement("input", {
-          className: "input-field",
-          type: "number",
-          value: formData.maxreps,
-          onChange: (e) => updateField('maxreps', e.target.value),
-          style: { width: 100 },
-          placeholder: "Max"
-        })
+      return h("div", { key: ex.id, style: { marginBottom: 20 } },
+        h("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
+        h("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description),
+        h("input", { className: "input-field", type: "number", value: formData.maxreps, onChange: (e) => updateField('maxreps', e.target.value), style: { width: 100 }, placeholder: "Max" })
       );
     }
-
     if (ex.type === 'burnout') {
       const vals = formData.burnout || [];
       const maxRep = parseInt(formData.maxreps) || 0;
       const target = Math.round(maxRep * 0.6);
-      return React.createElement("div", { key: ex.id, style: { marginBottom: 20 } },
-        React.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
-        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description, target > 0 ? ` (Target: ${target} reps each)` : ''),
-        React.createElement("div", { style: { display: "flex", gap: 8 } },
-          Array.from({ length: ex.sets }).map((_, i) => React.createElement("div", { key: i, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2 } },
-            React.createElement("span", { style: { fontSize: 11, color: "#64748b" } }, `Set ${i + 2}`),
-            React.createElement("input", {
-              className: "input-field",
-              type: "number",
-              value: vals[i] || '',
-              onChange: (e) => updateArrayField('burnout', i, e.target.value),
-              style: { width: 64, textAlign: "center" },
-              placeholder: target > 0 ? String(target) : "0"
-            })
+      return h("div", { key: ex.id, style: { marginBottom: 20 } },
+        h("div", { style: { fontWeight: 600, marginBottom: 4 } }, ex.name),
+        h("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, ex.description, target > 0 ? ` (Target: ${target} reps each)` : ''),
+        h("div", { style: { display: "flex", gap: 8 } },
+          Array.from({ length: ex.sets }).map((_, i) => h("div", { key: i, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2 } },
+            h("span", { style: { fontSize: 11, color: "#64748b" } }, `Set ${i + 2}`),
+            h("input", { className: "input-field", type: "number", value: vals[i] || '', onChange: (e) => updateArrayField('burnout', i, e.target.value), style: { width: 64, textAlign: "center" }, placeholder: target > 0 ? String(target) : "0" })
           ))
         )
       );
     }
-
     return null;
   };
 
-  return React.createElement("div", { className: "modal-overlay", onClick: (e) => { if (e.target === e.currentTarget) onClose(); } },
-    React.createElement("div", { className: "modal" },
-      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 } },
-        React.createElement("div", null,
-          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 4 } },
-            React.createElement("span", { style: { fontSize: 28 } }, workout.emoji),
-            React.createElement("h2", { style: { fontSize: 22, fontWeight: 800 } }, workout.name)
+  return h("div", { className: "modal-overlay", onClick: (e) => { if (e.target === e.currentTarget) onClose(); } },
+    h("div", { className: "modal" },
+      // Header
+      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 } },
+        h("div", null,
+          h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 4 } },
+            h("span", { style: { fontSize: 28 } }, workout.emoji),
+            h("h2", { style: { fontSize: 22, fontWeight: 800 } }, workout.name)
           ),
-          React.createElement("div", { style: { color: "#94a3b8", fontSize: 14 } }, `${dayOfWeek}, ${dateStr}`)
+          h("div", { style: { color: "#94a3b8", fontSize: 14 } }, `${dayOfWeek}, ${dateStr}`)
         ),
-        React.createElement("button", { onClick: onClose, style: { background: "none", border: "none", color: "#94a3b8", fontSize: 24, cursor: "pointer", padding: 4 } }, "\u00D7")
+        h("button", { onClick: onClose, style: { background: "none", border: "none", color: "#94a3b8", fontSize: 24, cursor: "pointer", padding: 4 } }, "\u00D7")
+      ),
+
+      // Player tabs
+      h("div", { style: { display: "flex", gap: 8, marginBottom: 20 } },
+        PLAYERS.map(p => h("button", {
+          key: p.id,
+          className: `player-tab ${p.id} ${activePlayer === p.id ? 'active' : ''}`,
+          onClick: () => setActivePlayer(p.id)
+        }, p.name))
+      ),
+
+      // Other player status hint
+      otherStatus && h("div", { style: { fontSize: 12, color: "#64748b", marginBottom: 16, padding: "8px 12px", background: "#0f172a", borderRadius: 8 } },
+        h("span", { style: { color: otherPlayer.light } }, otherPlayer.name),
+        `: ${otherPushups} push-ups \u2022 `,
+        h("span", { style: { color: otherStatus === 'completed' ? '#10b981' : otherStatus === 'partial' ? '#f59e0b' : '#64748b' } },
+          otherStatus === 'completed' ? 'Done' : 'Partial'
+        )
       ),
 
       // Exercises
       workout.exercises.map(ex => renderExercise(ex)),
 
       // Actions
-      React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 24 } },
-        React.createElement("button", { className: "btn btn-primary", onClick: handleSave, style: { flex: 1, background: workout.color } }, "Save"),
-        React.createElement("button", { className: "btn btn-danger", onClick: handleClear, style: { flex: 0 } }, "Clear"),
-        React.createElement("button", { className: "btn btn-ghost", onClick: onClose }, "Cancel")
+      h("div", { style: { display: "flex", gap: 8, marginTop: 24 } },
+        h("button", { className: "btn btn-primary", onClick: handleSave, style: { flex: 1, background: player.color } }, `Save for ${player.name}`),
+        h("button", { className: "btn btn-danger", onClick: handleClear, style: { flex: 0 } }, "Clear"),
+        h("button", { className: "btn btn-ghost", onClick: onClose }, "Cancel")
       )
     )
   );
@@ -465,27 +408,29 @@ function Calendar({ month, year, data, onDayClick }) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // Build weeks for summary
+  // Weekly summaries per player
   const weeks = {};
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d);
     if (!isInChallenge(date)) continue;
     const wn = getWeekNumber(date);
-    if (!weeks[wn]) weeks[wn] = { pushups: 0, maxReps: 0, days: 0 };
+    if (!weeks[wn]) weeks[wn] = { dimitri: { pushups: 0, max: 0 }, bram: { pushups: 0, max: 0 }, days: 0 };
     const dk = getDateKey(date);
-    if (data[dk]) {
-      const pd = data[dk];
-      weeks[wn].pushups += countPushups(pd);
-      if (pd.ladderMax && pd.ladderMax > weeks[wn].maxReps) weeks[wn].maxReps = pd.ladderMax;
-      if (pd.maxreps && pd.maxreps > weeks[wn].maxReps) weeks[wn].maxReps = pd.maxreps;
-      weeks[wn].days++;
+    const dayData = data[dk];
+    if (dayData) {
+      PLAYERS.forEach(p => {
+        const pd = dayData[p.id];
+        if (!pd) return;
+        weeks[wn][p.id].pushups += countPushups(pd);
+        if (pd.ladderMax && pd.ladderMax > weeks[wn][p.id].max) weeks[wn][p.id].max = pd.ladderMax;
+        if (pd.maxreps && pd.maxreps > weeks[wn][p.id].max) weeks[wn][p.id].max = pd.maxreps;
+      });
+      if (Object.keys(dayData).length > 0) weeks[wn].days++;
     }
   }
 
   const cells = [];
-  for (let i = 0; i < firstDay; i++) {
-    cells.push(React.createElement("div", { key: `empty-${i}` }));
-  }
+  for (let i = 0; i < firstDay; i++) cells.push(h("div", { key: `empty-${i}` }));
 
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d);
@@ -495,51 +440,61 @@ function Calendar({ month, year, data, onDayClick }) {
     const isPastDate = isPast(date);
     const workout = inChallenge ? getWorkoutType(date) : null;
     const isMain = isMainWorkoutDay(date);
-    const status = inChallenge ? getDayStatus(data, dateKey, workout) : null;
+    const dayData = data[dateKey];
+
+    // Per-player status
+    const dStatus = inChallenge ? getPlayerDayStatus(dayData, 'dimitri', workout) : null;
+    const bStatus = inChallenge ? getPlayerDayStatus(dayData, 'bram', workout) : null;
+
+    // Overall cell color: green if both completed, orange if one did, red if past and none
+    let bgColor = "#1e293b", borderColor = "#475569";
+    if (!inChallenge) { bgColor = "#1e293b"; borderColor = "#334155"; }
+    else if (dStatus === 'completed' && bStatus === 'completed') { bgColor = "#065f46"; borderColor = "#10b981"; }
+    else if (dStatus === 'completed' || bStatus === 'completed' || dStatus === 'partial' || bStatus === 'partial') { bgColor = "#78350f"; borderColor = "#f59e0b"; }
+    else if (isPastDate) { bgColor = "#7f1d1d"; borderColor = "#ef4444"; }
 
     let className = "cal-day";
     if (isTodayDate) className += " today";
-    if (!inChallenge) {
-      className += " rest";
-    } else if (status === 'completed') {
-      className += " completed";
-    } else if (status === 'partial') {
-      className += " partial";
-    } else if (isPastDate) {
-      className += " missed";
-    } else {
-      className += " workout-day future";
-    }
+    if (!inChallenge) className += " rest";
 
-    const dotColor = workout ? workout.color : null;
-
-    cells.push(React.createElement("div", {
-      key: d,
-      className,
+    cells.push(h("div", {
+      key: d, className,
       onClick: () => inChallenge && onDayClick(date),
-      style: { cursor: inChallenge ? 'pointer' : 'default' }
+      style: { cursor: inChallenge ? 'pointer' : 'default', background: bgColor, border: `1px solid ${borderColor}` }
     },
-      React.createElement("span", null, d),
-      inChallenge && React.createElement("div", {
-        style: { width: isMain ? 6 : 4, height: isMain ? 6 : 4, borderRadius: "50%", background: dotColor, marginTop: 2, opacity: isMain ? 0.8 : 0.5 }
-      }),
-      status === 'completed' && React.createElement("span", { style: { position: "absolute", top: 2, right: 4, fontSize: 10 } }, "\u2713")
+      h("span", null, d),
+      // Two dots for players
+      inChallenge && h("div", { style: { display: "flex", gap: 3, marginTop: 2 } },
+        h("div", { style: {
+          width: 5, height: 5, borderRadius: "50%",
+          background: dStatus === 'completed' ? '#10b981' : dStatus === 'partial' ? '#f59e0b' : isPastDate ? '#ef4444' : PLAYERS[0].color,
+          opacity: dStatus ? 1 : 0.3
+        }}),
+        h("div", { style: {
+          width: 5, height: 5, borderRadius: "50%",
+          background: bStatus === 'completed' ? '#10b981' : bStatus === 'partial' ? '#f59e0b' : isPastDate ? '#ef4444' : PLAYERS[1].color,
+          opacity: bStatus ? 1 : 0.3
+        }})
+      )
     ));
   }
 
-  return React.createElement("div", null,
-    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 8 } },
-      dayNames.map(dn => React.createElement("div", { key: dn, style: { textAlign: "center", fontSize: 12, color: "#64748b", fontWeight: 600, padding: "4px 0" } }, dn))
+  return h("div", null,
+    h("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 8 } },
+      dayNames.map(dn => h("div", { key: dn, style: { textAlign: "center", fontSize: 12, color: "#64748b", fontWeight: 600, padding: "4px 0" } }, dn))
     ),
-    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 } }, cells),
+    h("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 } }, cells),
 
     // Weekly summaries
-    Object.keys(weeks).length > 0 && React.createElement("div", { style: { marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8 } },
+    Object.keys(weeks).length > 0 && h("div", { style: { marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8 } },
       Object.entries(weeks).map(([wn, ws]) =>
-        React.createElement("div", { key: wn, className: "week-summary", style: { flex: "1 1 140px", minWidth: 140 } },
-          React.createElement("div", { style: { fontSize: 12, color: "#64748b", fontWeight: 600, marginBottom: 4 } }, `Week ${wn}`),
-          React.createElement("div", { style: { fontSize: 14, fontWeight: 700 } }, `${ws.pushups} push-ups`),
-          React.createElement("div", { style: { fontSize: 12, color: "#94a3b8" } }, `Max: ${ws.maxReps} | ${ws.days} sessions`)
+        h("div", { key: wn, className: "week-summary", style: { flex: "1 1 180px", minWidth: 180 } },
+          h("div", { style: { fontSize: 12, color: "#64748b", fontWeight: 600, marginBottom: 8 } }, `Week ${wn}`),
+          PLAYERS.map(p => h("div", { key: p.id, style: { display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 } },
+            h("span", { style: { color: p.light } }, p.name),
+            h("span", { style: { fontWeight: 700 } }, `${ws[p.id].pushups} pushups`)
+          )),
+          h(LeaderboardBar, { valA: ws.dimitri.pushups, valB: ws.bram.pushups, colorA: PLAYERS[0].color, colorB: PLAYERS[1].color })
         )
       )
     )
@@ -547,55 +502,54 @@ function Calendar({ month, year, data, onDayClick }) {
 }
 
 function UpcomingChallenges({ data }) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
   const upcoming = [];
   const d = new Date(today);
-
   while (upcoming.length < 3 && d <= CHALLENGE_END) {
     if (isInChallenge(d)) {
       const dateKey = getDateKey(d);
       const workout = getWorkoutType(d);
-      const status = getDayStatus(data, dateKey, workout);
-      if (d >= today && status !== 'completed') {
-        upcoming.push({ date: new Date(d), workout, dateKey, status });
+      const dayData = data[dateKey];
+      const dDone = getPlayerDayStatus(dayData, 'dimitri', workout) === 'completed';
+      const bDone = getPlayerDayStatus(dayData, 'bram', workout) === 'completed';
+      if (d >= today && !(dDone && bDone)) {
+        upcoming.push({ date: new Date(d), workout, dateKey, dDone, bDone });
       }
     }
     d.setDate(d.getDate() + 1);
   }
 
-  return React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }, className: "challenges-grid" },
-    upcoming.map(({ date, workout, dateKey, status }) => {
+  return h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }, className: "challenges-grid" },
+    upcoming.map(({ date, workout, dateKey, dDone, bDone }) => {
       const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
       const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const isTodayDate = isToday(date);
-
-      return React.createElement("div", {
-        key: dateKey,
-        className: "workout-card",
-        style: { borderColor: isTodayDate ? workout.color : "#334155" }
-      },
-        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 } },
-          React.createElement("div", null,
-            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 } },
-              React.createElement("span", { style: { fontSize: 24 } }, workout.emoji),
-              React.createElement("span", { style: { fontWeight: 800, fontSize: 18 } }, workout.name)
+      return h("div", { key: dateKey, className: "workout-card", style: { borderColor: isTodayDate ? workout.color : "#334155" } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 } },
+          h("div", null,
+            h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 } },
+              h("span", { style: { fontSize: 24 } }, workout.emoji),
+              h("span", { style: { fontWeight: 800, fontSize: 18 } }, workout.name)
             ),
-            React.createElement("div", { style: { color: "#94a3b8", fontSize: 13 } }, `${dayName}, ${dateStr}`)
+            h("div", { style: { color: "#94a3b8", fontSize: 13 } }, `${dayName}, ${dateStr}`)
           ),
-          React.createElement("span", { className: `badge ${workout.badgeClass}` },
-            isTodayDate ? "TODAY" : dayName.substring(0, 3).toUpperCase()
-          )
+          h("span", { className: `badge ${workout.badgeClass}` }, isTodayDate ? "TODAY" : dayName.substring(0, 3).toUpperCase())
         ),
-        React.createElement("div", { style: { fontSize: 13, color: "#94a3b8", marginBottom: 12 } }, workout.description),
-        React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
-          workout.exercises.map(ex => React.createElement("div", {
-            key: ex.id,
-            style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#cbd5e1" }
-          },
-            React.createElement("div", { style: { width: 6, height: 6, borderRadius: "50%", background: workout.color, flexShrink: 0 } }),
+        h("div", { style: { fontSize: 13, color: "#94a3b8", marginBottom: 12 } }, workout.description),
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+          workout.exercises.map(ex => h("div", { key: ex.id, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#cbd5e1" } },
+            h("div", { style: { width: 6, height: 6, borderRadius: "50%", background: workout.color, flexShrink: 0 } }),
             ex.description
           ))
+        ),
+        // Player status badges
+        h("div", { style: { display: "flex", gap: 8, marginTop: 12 } },
+          PLAYERS.map(p => {
+            const done = p.id === 'dimitri' ? dDone : bDone;
+            return h("div", { key: p.id, style: { fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: done ? '#065f46' : '#1e293b', color: done ? '#10b981' : '#64748b', border: `1px solid ${done ? '#10b981' : '#334155'}` } },
+              `${p.name}: ${done ? 'Done' : 'Pending'}`
+            );
+          })
         )
       );
     })
@@ -610,12 +564,10 @@ function App() {
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [syncStatus, setSyncStatus] = useState("loading");
 
-  // On mount: fetch cloud data and merge with local
   useEffect(() => {
     loadCloudData().then(cloudData => {
       if (cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0) {
         setData(prev => {
-          // Merge: cloud wins for keys that exist in cloud, local fills gaps
           const merged = { ...prev, ...cloudData };
           localStorage.setItem('pushto50_data', JSON.stringify(merged));
           return merged;
@@ -625,172 +577,154 @@ function App() {
     }).catch(() => setSyncStatus("offline"));
   }, []);
 
-  // Save locally + to cloud on every change
   useEffect(() => { if (syncStatus !== "loading") saveData(data); }, [data]);
 
-  const handleSave = (dateKey, dayData) => {
+  const handleSave = (dateKey, playerId, playerData) => {
     setData(prev => {
       const next = { ...prev };
-      if (dayData === null) { delete next[dateKey]; }
-      else { next[dateKey] = dayData; }
+      if (!next[dateKey]) next[dateKey] = {};
+      if (playerData === null) { delete next[dateKey][playerId]; if (Object.keys(next[dateKey]).length === 0) delete next[dateKey]; }
+      else { next[dateKey] = { ...next[dateKey], [playerId]: playerData }; }
       return next;
     });
     setSelectedDate(null);
   };
 
-  const totalPushups = getTotalPushups(data);
-  const maxUnbroken = getMaxUnbroken(data);
+  const dStats = getPlayerStats(data, 'dimitri');
+  const bStats = getPlayerStats(data, 'bram');
   const daysLeft = getDaysLeft();
   const daysSinceStart = getDaysSinceStart();
-  const avgPerDay = daysSinceStart > 0 ? (totalPushups / daysSinceStart).toFixed(1) : 0;
+  const bestMax = Math.max(dStats.max, bStats.max);
 
-  const prevMonth = () => {
-    if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); }
-    else setCalMonth(calMonth - 1);
-  };
-  const nextMonth = () => {
-    if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); }
-    else setCalMonth(calMonth + 1);
-  };
-
+  const prevMonth = () => { if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); } else setCalMonth(calMonth - 1); };
+  const nextMonth = () => { if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); } else setCalMonth(calMonth + 1); };
   const monthLabel = new Date(calYear, calMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const selectedWorkout = selectedDate ? getWorkoutType(selectedDate) : null;
 
-  return React.createElement("div", { style: { maxWidth: 960, margin: "0 auto", padding: "24px 16px" } },
+  // Who's winning?
+  const leader = dStats.total > bStats.total ? 'Dimitri' : bStats.total > dStats.total ? 'Bram' : 'Tied';
+  const leadColor = leader === 'Dimitri' ? PLAYERS[0].color : leader === 'Bram' ? PLAYERS[1].color : '#64748b';
+
+  return h("div", { style: { maxWidth: 960, margin: "0 auto", padding: "24px 16px" } },
 
     // Header
-    React.createElement("div", { style: { textAlign: "center", marginBottom: 40 } },
-      React.createElement("h1", { style: { fontSize: 48, fontWeight: 900, letterSpacing: -2, marginBottom: 4, background: "linear-gradient(135deg, #3b82f6, #8b5cf6, #ef4444)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } }, "PUSH TO 50"),
-      React.createElement("p", { style: { color: "#64748b", fontSize: 16, fontWeight: 500 } }, "Dimitri & Bram \u2022 50 unbroken push-ups by April 15th"),
-      React.createElement("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginTop: 16 } },
-        React.createElement(ProgressRing, { value: maxUnbroken, max: 50, size: 64, strokeWidth: 5, color: "#8b5cf6" }),
-        React.createElement("div", { style: { textAlign: "left" } },
-          React.createElement("div", { style: { fontSize: 24, fontWeight: 800 } }, `${maxUnbroken} / 50`),
-          React.createElement("div", { style: { fontSize: 13, color: "#64748b" } }, "best unbroken reps")
+    h("div", { style: { textAlign: "center", marginBottom: 32 } },
+      h("h1", { style: { fontSize: 48, fontWeight: 900, letterSpacing: -2, marginBottom: 4, background: "linear-gradient(135deg, #3b82f6, #8b5cf6, #ef4444)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } }, "PUSH TO 50"),
+      h("p", { style: { color: "#64748b", fontSize: 16, fontWeight: 500 } }, "Dimitri vs Bram \u2022 50 unbroken push-ups by April 15th"),
+
+      // Loser callout
+      (dStats.total !== bStats.total) && h("div", { style: { marginTop: 12, padding: "8px 20px", background: "linear-gradient(135deg, #7f1d1d, #991b1b)", borderRadius: 12, display: "inline-block" } },
+        h("span", { style: { fontSize: 16, fontWeight: 800, color: "#fca5a5" } },
+          `${dStats.total < bStats.total ? 'Dimitri' : 'Bram'} `,
+          h("span", { style: { fontSize: 20 } }, "LOOOOOOOSER \u{1F923}")
         )
+      ),
+
+      // Progress rings side by side
+      h("div", { style: { display: "flex", justifyContent: "center", alignItems: "center", gap: 40, marginTop: 20 } },
+        PLAYERS.map(p => {
+          const stats = p.id === 'dimitri' ? dStats : bStats;
+          return h("div", { key: p.id, style: { textAlign: "center" } },
+            h("div", { style: { position: "relative", display: "inline-block" } },
+              h(ProgressRing, { value: stats.max, max: 50, size: 72, strokeWidth: 5, color: p.color }),
+              h("div", { style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, transform: "rotate(90deg)" } }, stats.max)
+            ),
+            h("div", { style: { fontSize: 13, fontWeight: 700, color: p.light, marginTop: 6 } }, p.name),
+            h("div", { style: { fontSize: 11, color: "#64748b" } }, `${stats.max}/50 best`)
+          );
+        }),
+      ),
+
+      // Leaderboard total bar
+      h("div", { style: { maxWidth: 300, margin: "16px auto 0" } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 } },
+          h("span", { style: { color: PLAYERS[0].light, fontWeight: 600 } }, dStats.total),
+          h("span", { style: { color: leadColor, fontWeight: 700, fontSize: 11 } }, leader === 'Tied' ? 'TIED' : `${leader} leads`),
+          h("span", { style: { color: PLAYERS[1].light, fontWeight: 600 } }, bStats.total)
+        ),
+        h(LeaderboardBar, { valA: dStats.total, valB: bStats.total, colorA: PLAYERS[0].color, colorB: PLAYERS[1].color })
       )
     ),
 
-    // KPI Grid
-    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 40 }, className: "kpi-grid" },
-      React.createElement(KPICard, {
-        label: "Total Push-ups",
-        icon: "\u{1F4AA}",
-        color: "#3b82f6",
-        value: totalPushups.toLocaleString()
-      }),
-      React.createElement(KPICard, {
-        label: "Max Unbroken",
-        icon: "\u{1F3AF}",
-        color: "#10b981",
-        value: maxUnbroken
-      }),
-      React.createElement(KPICard, {
-        label: "Days Left",
-        icon: "\u23F3",
-        color: "#f59e0b",
-        value: daysLeft,
-        subLabel: "until Apr 15"
-      }),
-      React.createElement(KPICard, {
-        label: "Avg / Day",
-        icon: "\u{1F4C8}",
-        color: "#8b5cf6",
-        value: avgPerDay,
-        subLabel: "push-ups"
-      })
+    // Head-to-head KPIs
+    h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 40 }, className: "kpi-grid h2h-grid" },
+      h(HeadToHeadKPI, { label: "Total Push-ups", icon: "\u{1F4AA}", dimitriVal: dStats.total, bramVal: bStats.total }),
+      h(HeadToHeadKPI, { label: "Max Unbroken", icon: "\u{1F3AF}", dimitriVal: dStats.max, bramVal: bStats.max }),
+      h(HeadToHeadKPI, { label: "Avg / Day", icon: "\u{1F4C8}", dimitriVal: (dStats.total / daysSinceStart).toFixed(1), bramVal: (bStats.total / daysSinceStart).toFixed(1) }),
     ),
 
-    // Calendar Section
-    React.createElement("div", { style: { marginBottom: 40 } },
-      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } },
-        React.createElement("h2", { style: { fontSize: 22, fontWeight: 800 } }, "Calendar"),
-        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
-          React.createElement("button", { className: "btn btn-ghost", onClick: prevMonth, style: { padding: "6px 12px" } }, "\u2190"),
-          React.createElement("span", { style: { fontWeight: 700, fontSize: 16, minWidth: 160, textAlign: "center" } }, monthLabel),
-          React.createElement("button", { className: "btn btn-ghost", onClick: nextMonth, style: { padding: "6px 12px" } }, "\u2192")
+    // Days left (shared)
+    h("div", { style: { textAlign: "center", marginBottom: 32, padding: "16px", background: "linear-gradient(135deg, #1e293b, #334155)", borderRadius: 16, border: "1px solid #334155" } },
+      h("span", { style: { fontSize: 13, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 } }, "\u23F3 Days Left: "),
+      h("span", { style: { fontSize: 32, fontWeight: 800, color: "#f59e0b" } }, daysLeft),
+      h("span", { style: { fontSize: 13, color: "#64748b", marginLeft: 8 } }, "until April 15th")
+    ),
+
+    // Calendar
+    h("div", { style: { marginBottom: 40 } },
+      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } },
+        h("h2", { style: { fontSize: 22, fontWeight: 800 } }, "Calendar"),
+        h("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+          h("button", { className: "btn btn-ghost", onClick: prevMonth, style: { padding: "6px 12px" } }, "\u2190"),
+          h("span", { style: { fontWeight: 700, fontSize: 16, minWidth: 160, textAlign: "center" } }, monthLabel),
+          h("button", { className: "btn btn-ghost", onClick: nextMonth, style: { padding: "6px 12px" } }, "\u2192")
         )
       ),
 
       // Legend
-      React.createElement("div", { style: { display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap" } },
-        [
-          { color: "#065f46", border: "#10b981", label: "Completed" },
-          { color: "#78350f", border: "#f59e0b", label: "Partial" },
-          { color: "#7f1d1d", border: "#ef4444", label: "Missed" },
-          { color: "#1e293b", border: "#475569", label: "Upcoming" }
-        ].map(l => React.createElement("div", { key: l.label, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#94a3b8" } },
-          React.createElement("div", { style: { width: 14, height: 14, borderRadius: 4, background: l.color, border: `1px solid ${l.border}` } }),
-          l.label
-        ))
+      h("div", { style: { display: "flex", gap: 16, marginBottom: 12, flexWrap: "wrap" } },
+        h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#94a3b8" } },
+          h("div", { style: { width: 14, height: 14, borderRadius: 4, background: "#065f46", border: "1px solid #10b981" } }), "Both done"),
+        h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#94a3b8" } },
+          h("div", { style: { width: 14, height: 14, borderRadius: 4, background: "#78350f", border: "1px solid #f59e0b" } }), "One done"),
+        h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#94a3b8" } },
+          h("div", { style: { width: 14, height: 14, borderRadius: 4, background: "#7f1d1d", border: "1px solid #ef4444" } }), "Missed"),
+      ),
+      // Dot legend
+      h("div", { style: { display: "flex", gap: 12, marginBottom: 16, fontSize: 11, color: "#64748b" } },
+        h("span", null, "Dots: "),
+        h("span", { style: { color: PLAYERS[0].light } }, "\u25CF Dimitri"),
+        h("span", { style: { color: PLAYERS[1].light } }, "\u25CF Bram")
       ),
 
-      React.createElement(Calendar, { month: calMonth, year: calYear, data, onDayClick: setSelectedDate })
+      h(Calendar, { month: calMonth, year: calYear, data, onDayClick: setSelectedDate })
     ),
 
-    // Upcoming Challenges
-    React.createElement("div", { style: { marginBottom: 40 } },
-      React.createElement("h2", { style: { fontSize: 22, fontWeight: 800, marginBottom: 20 } }, "Next Challenges"),
-      React.createElement(UpcomingChallenges, { data })
+    // Upcoming
+    h("div", { style: { marginBottom: 40 } },
+      h("h2", { style: { fontSize: 22, fontWeight: 800, marginBottom: 20 } }, "Next Challenges"),
+      h(UpcomingChallenges, { data })
     ),
 
-
-    // Footer with export/import
-    React.createElement("div", { style: { textAlign: "center", padding: "24px 0", color: "#475569", fontSize: 13 } },
-      React.createElement("div", null,
+    // Footer
+    h("div", { style: { textAlign: "center", padding: "24px 0", color: "#475569", fontSize: 13 } },
+      h("div", null,
         "Push to 50 \u2022 March 16 \u2013 April 15, 2026 \u2022 ",
-        React.createElement("span", { style: { color: syncStatus === "synced" ? "#10b981" : syncStatus === "loading" ? "#f59e0b" : "#ef4444" } },
+        h("span", { style: { color: syncStatus === "synced" ? "#10b981" : syncStatus === "loading" ? "#f59e0b" : "#ef4444" } },
           syncStatus === "synced" ? "\u2601 Synced" : syncStatus === "loading" ? "\u23F3 Syncing..." : "\u26A0 Offline"
         )
       ),
-      React.createElement("div", { style: { marginTop: 12, display: "flex", justifyContent: "center", gap: 8 } },
-        React.createElement("button", {
-          className: "btn btn-ghost",
-          style: { fontSize: 11, padding: "4px 12px" },
-          onClick: () => {
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = 'pushto50-backup.json'; a.click();
-            URL.revokeObjectURL(url);
-          }
-        }, "Export data"),
-        React.createElement("button", {
-          className: "btn btn-ghost",
-          style: { fontSize: 11, padding: "4px 12px" },
-          onClick: () => {
-            const input = document.createElement('input');
-            input.type = 'file'; input.accept = '.json';
-            input.onchange = (e) => {
-              const file = e.target.files[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = (ev) => {
-                try {
-                  const imported = JSON.parse(ev.target.result);
-                  setData(imported);
-                } catch { alert('Invalid backup file'); }
-              };
-              reader.readAsText(file);
-            };
-            input.click();
-          }
-        }, "Import data")
+      h("div", { style: { marginTop: 12, display: "flex", justifyContent: "center", gap: 8 } },
+        h("button", { className: "btn btn-ghost", style: { fontSize: 11, padding: "4px 12px" }, onClick: () => {
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob); const a = document.createElement('a');
+          a.href = url; a.download = 'pushto50-backup.json'; a.click(); URL.revokeObjectURL(url);
+        }}, "Export data"),
+        h("button", { className: "btn btn-ghost", style: { fontSize: 11, padding: "4px 12px" }, onClick: () => {
+          const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+          input.onchange = (e) => { const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader(); reader.onload = (ev) => { try { setData(JSON.parse(ev.target.result)); } catch { alert('Invalid backup file'); } };
+            reader.readAsText(file); }; input.click();
+        }}, "Import data")
       )
     ),
 
     // Modal
-    selectedDate && selectedWorkout && React.createElement(WorkoutModal, {
-      date: selectedDate,
-      workout: selectedWorkout,
-      data,
-      onSave: handleSave,
-      onClose: () => setSelectedDate(null)
-    })
+    selectedDate && selectedWorkout && h(WorkoutModal, { date: selectedDate, workout: selectedWorkout, data, onSave: handleSave, onClose: () => setSelectedDate(null) })
   );
 }
 
-ReactDOM.render(React.createElement(App), document.getElementById('root'));
+ReactDOM.render(h(App), document.getElementById('root'));
 </script>
 </body>
 </html>
